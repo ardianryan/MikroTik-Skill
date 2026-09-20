@@ -13,10 +13,11 @@ on:
 
 permissions:
   contents: read
+  packages: write
 
 jobs:
   publish:
-    name: Build, Verify & Publish to npm
+    name: Build, Verify & Publish to npm and GitHub Packages
     runs-on: ubuntu-latest
 
     steps:
@@ -53,6 +54,20 @@ jobs:
 
       - name: Publish to npmjs.com
         if: ${{ inputs.dry_run != true }}
-        run: npm publish --access public
+        run: npm publish --access public || true
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish to GitHub Packages
+        if: ${{ inputs.dry_run != true }}
+        run: |
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.name = '@${{ github.repository_owner }}/mikrotik-skill';
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
+          "
+          echo "//npm.pkg.github.com/:_authToken=\${NODE_AUTH_TOKEN}" > .npmrc
+          npm publish --registry=https://npm.pkg.github.com || true
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

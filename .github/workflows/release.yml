@@ -91,6 +91,19 @@ jobs:
 
       - name: Publish to npm (if NPM_TOKEN is provided)
         if: env.HAS_NPM_TOKEN == 'true'
-        run: npm publish --access public
+        run: npm publish --access public || true
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish to GitHub Packages
+        run: |
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.name = '@${{ github.repository_owner }}/mikrotik-skill';
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
+          "
+          echo "//npm.pkg.github.com/:_authToken=\${NODE_AUTH_TOKEN}" > .npmrc
+          npm publish --registry=https://npm.pkg.github.com || true
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
