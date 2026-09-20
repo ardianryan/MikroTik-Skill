@@ -172,4 +172,20 @@ describe('MikroTikHttpServer (Pure Knowledge Engine)', () => {
     assert.equal(data.passed, false);
     assert.equal(data.findings[0].id, 'LINT-SEC-01');
   });
+
+  test('POST /api/v1/knowledge/hotspot generates captive portal bundle', async () => {
+    const res = await fetch(`${baseUrl}/api/v1/knowledge/hotspot`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        venueName: 'Hotel Asteria',
+        model: 'voucher',
+      }),
+    });
+    assert.equal(res.status, 200);
+    const data = (await res.json()) as { loginHtml: string; statusHtml: string; routerOsScript: string };
+    assert.ok(data.loginHtml.includes('Hotel Asteria'));
+    assert.ok(data.statusHtml.includes('Hotel Asteria'));
+    assert.ok(data.routerOsScript.includes('/ip hotspot user profile'));
+  });
 });

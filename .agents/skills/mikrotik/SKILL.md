@@ -410,6 +410,9 @@ mtik lease --add --ip <IP> --mac <MAC>        # Add static DHCP lease reservatio
 mtik container [list|--restart <id>]          # List and manage Docker containers
 mtik adlist [list|--add <url>]                # Inspect or register DNS sinkhole blocklists
 
+# Hotspot & Captive Portal Studio
+mtik hotspot [--model voucher|member|dual|all-in-one] [-o ./hotspot] # Generate modern captive portal & config
+
 # Certification Templates Generator (10 Tracks)
 mtik template --list                          # List all 10 certified configuration templates
 mtik template <track>                         # Print certified production configuration
@@ -434,6 +437,7 @@ mtik install-mcp -t <antigravity|cursor|claude|windsurf|all> [--with-env]
 - `mikrotik_manage_container`: Lists running container status and initiates container restarts.
 - `mikrotik_get_adlist_status`: Queries status of `/ip dns adlist` malware/adblocker feeds.
 - `mikrotik_generate_template`: Generates standardized production configuration templates across all 10 certification tracks.
+- `mikrotik_generate_hotspot_portal`: Generates responsive mobile-first login.html, status.html, and RouterOS v7 walled-garden configuration supporting Voucher PINs, Member logins, Google OAuth relay, and Free Trial access.
 - `mikrotik_execute_command`: Executes arbitrary RouterOS CLI command or script atomically with output sanitization.
 - `mikrotik_rest_query`: Sends direct HTTP REST API calls (GET, POST, PUT, PATCH, DELETE) to any `/rest/<menu>` endpoint.
 - `mikrotik_list_devices`: Enumerates all managed routers from `inventory.yml`, stored profiles, or active environment.

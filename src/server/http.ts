@@ -13,6 +13,7 @@ import { PccCalculator, type PccOptions } from '../safety/pcc-calculator.js';
 import { WireGuardProvisioner, type WireGuardClientOptions } from '../safety/wireguard.js';
 import { RoutingMigrator } from '../safety/routing-migrator.js';
 import { RouterOsLinter } from '../safety/linter.js';
+import { HotspotPortalGenerator } from '../safety/hotspot-generator.js';
 import { OpenApiGenerator } from './openapi.js';
 
 export interface HttpServerOptions {
@@ -246,6 +247,23 @@ export class MikroTikHttpServer {
         return;
       }
       const result = RouterOsLinter.lint(script);
+      this.sendJson(res, 200, result);
+      return;
+    }
+
+    if (pathname === '/api/v1/knowledge/hotspot' && method === 'POST') {
+      const body = await this.parseBody(req);
+      const result = HotspotPortalGenerator.generate({
+        venueName: body.venueName as string | undefined,
+        model: body.model as any,
+        enableTrial: body.enableTrial as boolean | undefined,
+        trialUptime: body.trialUptime as string | undefined,
+        trialRateLimit: body.trialRateLimit as string | undefined,
+        voucherRateLimit: body.voucherRateLimit as string | undefined,
+        paymentGateway: body.paymentGateway as any,
+        dnsName: body.dnsName as string | undefined,
+        googleAuthUrl: body.googleAuthUrl as string | undefined,
+      });
       this.sendJson(res, 200, result);
       return;
     }

@@ -25,6 +25,7 @@ import { PccCalculator } from '../safety/pcc-calculator.js';
 import { WireGuardProvisioner } from '../safety/wireguard.js';
 import { RoutingMigrator } from '../safety/routing-migrator.js';
 import { RouterOsLinter } from '../safety/linter.js';
+import { HotspotPortalGenerator, type HotspotAuthModel } from '../safety/hotspot-generator.js';
 import { MikroTikHttpServer } from '../server/http.js';
 import { OpenApiGenerator } from '../server/openapi.js';
 import type { InterfaceTrafficMonitor } from '../client/types.js';
@@ -34,7 +35,7 @@ const program = new Command();
 program
   .name('mtik')
   .description('MikroTik RouterOS v7 Production Automation & Management CLI')
-  .version('1.1.0');
+  .version('1.1.2');
 
 program
   .command('test')
@@ -773,6 +774,55 @@ program
       console.log(chalk.gray('# RouterOS v7 Script:\n'));
       console.log(result.script);
     }
+  });
+
+program
+  .command('hotspot')
+  .description('Generate modern responsive captive portal files (login.html, status.html) and RouterOS v7 walled-garden configuration.')
+  .option('-m, --model <type>', 'Authentication model: voucher | member | dual | all-in-one', 'all-in-one')
+  .option('-v, --venue <name>', 'Venue brand name displayed on portal', 'High-Speed Wi-Fi')
+  .option('-o, --output-dir <path>', 'Directory to save portal HTML files and RouterOS script', './hotspot')
+  .option('--no-trial', 'Disable one-click free trial access')
+  .option('--trial-time <time>', 'Trial session limit', '30m')
+  .option('--voucher-limit <rate>', 'Voucher bandwidth rate limit', '10M/5M')
+  .option('--gateway <processor>', 'Payment gateway to whitelist in Walled Garden: midtrans | xendit | stripe | none', 'none')
+  .option('--dns <domain>', 'Hotspot DNS name', 'wifi.venue.lan')
+  .action((opts) => {
+    const validModels: HotspotAuthModel[] = ['voucher', 'member', 'dual', 'all-in-one'];
+    const model = (opts.model || 'all-in-one').toLowerCase() as HotspotAuthModel;
+    if (!validModels.includes(model)) {
+      console.error(chalk.red(`Invalid model: '${opts.model}'. Choose from: ${validModels.join(', ')}`));
+      process.exitCode = 1;
+      return;
+    }
+
+    const bundle = HotspotPortalGenerator.generate({
+      venueName: opts.venue,
+      model,
+      enableTrial: opts.trial !== false,
+      trialUptime: opts.trialTime,
+      voucherRateLimit: opts.voucherLimit,
+      paymentGateway: opts.gateway,
+      dnsName: opts.dns,
+    });
+
+    const targetDir = path.resolve(process.cwd(), opts.outputDir);
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+
+    fs.writeFileSync(path.join(targetDir, 'login.html'), bundle.loginHtml, 'utf-8');
+    fs.writeFileSync(path.join(targetDir, 'status.html'), bundle.statusHtml, 'utf-8');
+    fs.writeFileSync(path.join(targetDir, 'hotspot_config.rsc'), bundle.routerOsScript, 'utf-8');
+
+    console.log(chalk.cyan.bold(`\n✔ Modern Captive Portal Generated Successfully! (Model: ${model.toUpperCase()})`));
+    console.log(chalk.gray(`Output Directory: ${targetDir}`));
+    console.log(`  - ${chalk.green('login.html')}        : Mobile-first responsive captive login form`);
+    console.log(`  - ${chalk.green('status.html')}       : Live session telemetry & bandwidth counter`);
+    console.log(`  - ${chalk.green('hotspot_config.rsc')}: RouterOS v7 walled-garden & profiles script\n`);
+    console.log(chalk.bold('To deploy to your router flash storage:'));
+    console.log(chalk.yellow(`  scp -P 22 ${path.join(targetDir, 'login.html')} admin@<router-ip>:/flash/hotspot/`));
+    console.log(chalk.yellow(`  scp -P 22 ${path.join(targetDir, 'status.html')} admin@<router-ip>:/flash/hotspot/\n`));
   });
 
 program

@@ -17,6 +17,7 @@ import { PccCalculator } from '../safety/pcc-calculator.js';
 import { WireGuardProvisioner } from '../safety/wireguard.js';
 import { RoutingMigrator } from '../safety/routing-migrator.js';
 import { RouterOsLinter } from '../safety/linter.js';
+import { HotspotPortalGenerator } from '../safety/hotspot-generator.js';
 
 const server = new Server(
   {
@@ -134,6 +135,45 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
           },
           required: ['track'],
+        },
+      },
+      {
+        name: 'mikrotik_generate_hotspot_portal',
+        description: 'Generate production-ready captive portal login.html, status.html, and RouterOS v7 walled-garden configuration supporting Voucher-only, Dual Member/Voucher, Google OAuth relay, and Free Trial access.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            venueName: {
+              type: 'string',
+              description: 'Venue brand name displayed on portal (e.g. "Horizon Lounge")',
+            },
+            model: {
+              type: 'string',
+              enum: ['voucher', 'member', 'dual', 'all-in-one'],
+              description: 'Authentication model: voucher (single PIN code), member (user+pass), dual (tabbed voucher & member), or all-in-one (includes Google & free trial)',
+            },
+            enableTrial: {
+              type: 'boolean',
+              description: 'Enable 1-click complimentary free trial access',
+            },
+            trialUptime: {
+              type: 'string',
+              description: 'Trial session limit (e.g. "30m", "1h")',
+            },
+            voucherRateLimit: {
+              type: 'string',
+              description: 'Voucher bandwidth limit (e.g. "10M/5M")',
+            },
+            paymentGateway: {
+              type: 'string',
+              enum: ['midtrans', 'xendit', 'stripe', 'none'],
+              description: 'Payment processor to whitelist in Walled Garden for instant voucher purchases',
+            },
+            dnsName: {
+              type: 'string',
+              description: 'Hotspot DNS name (e.g. "wifi.venue.lan")',
+            },
+          },
         },
       },
       {
@@ -580,6 +620,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             {
               type: 'text',
               text: `# ${tpl.title}\n# ${tpl.description}\n\n${tpl.script}`,
+            },
+          ],
+        };
+      }
+
+      case 'mikrotik_generate_hotspot_portal': {
+        const bundle = HotspotPortalGenerator.generate({
+          venueName: args?.venueName as string | undefined,
+          model: args?.model as any,
+          enableTrial: args?.enableTrial as boolean | undefined,
+          trialUptime: args?.trialUptime as string | undefined,
+          voucherRateLimit: args?.voucherRateLimit as string | undefined,
+          paymentGateway: args?.paymentGateway as any,
+          dnsName: args?.dnsName as string | undefined,
+        });
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(bundle, null, 2),
             },
           ],
         };
