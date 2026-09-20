@@ -17,6 +17,10 @@ import type {
   ContainerItem,
   AdlistItem,
   InterfaceTrafficMonitor,
+  LogItem,
+  PoeItem,
+  QueueItem,
+  WirelessClientItem,
 } from './types.js';
 
 export class ConnectionManager {
@@ -324,6 +328,76 @@ export class ConnectionManager {
       (c) => c.executeScript(script),
       (c) => c.executeScript(script)
     );
+  }
+
+  async getLogs(options?: { topics?: string[]; limit?: number }): Promise<LogItem[]> {
+    try {
+      const limit = options?.limit || 50;
+      const res = await this.restRequest<LogItem[]>('/log', 'GET');
+      if (Array.isArray(res)) {
+        let filtered = res;
+        if (options?.topics && options.topics.length > 0) {
+          const matchTopics = options.topics.map((t) => t.toLowerCase());
+          filtered = filtered.filter((item) =>
+            matchTopics.some((t) => (item.topics || '').toLowerCase().includes(t))
+          );
+        }
+        return filtered.slice(-limit);
+      }
+    } catch {
+      // Fallback
+    }
+    return [];
+  }
+
+  async getPoeStatus(): Promise<PoeItem[]> {
+    try {
+      const res = await this.restRequest<PoeItem[]>('/interface/ethernet/poe', 'GET');
+      if (Array.isArray(res)) return res;
+    } catch {
+      // Fallback
+    }
+    return [];
+  }
+
+  async cyclePoePower(interfaceName: string): Promise<unknown> {
+    const cleanIface = interfaceName.replace(/[^a-zA-Z0-9_-]/g, '');
+    return this.executeScript(`/interface ethernet poe power-cycle ${cleanIface}`);
+  }
+
+  async getQueues(): Promise<QueueItem[]> {
+    try {
+      const res = await this.restRequest<QueueItem[]>('/queue/simple', 'GET');
+      if (Array.isArray(res)) return res;
+    } catch {
+      // Fallback
+    }
+    return [];
+  }
+
+  async createCakeQueue(options: { name: string; target: string; upload: string; download: string }): Promise<unknown> {
+    const cmd =
+      `/queue type add name=cake-default kind=cake comment="CAKE SQM"; ` +
+      `/queue simple add name="${options.name}" target=${options.target} max-limit=${options.upload}/${options.download} queue=cake-default/cake-default comment="CAKE Smart Queue"`;
+    return this.executeScript(cmd);
+  }
+
+  async getWirelessClients(): Promise<WirelessClientItem[]> {
+    // Try v7 wifiwave2/wifi package first, then fallback to legacy wireless
+    try {
+      const wifiRes = await this.restRequest<WirelessClientItem[]>('/interface/wifi/registration-table', 'GET');
+      if (Array.isArray(wifiRes) && wifiRes.length > 0) return wifiRes;
+    } catch {
+      // Fallback to legacy
+    }
+
+    try {
+      const legRes = await this.restRequest<WirelessClientItem[]>('/interface/wireless/registration-table', 'GET');
+      if (Array.isArray(legRes)) return legRes;
+    } catch {
+      // None
+    }
+    return [];
   }
 
   async restRequest<T>(endpoint: string, method: string = 'GET', body?: unknown): Promise<T> {

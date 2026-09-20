@@ -9,6 +9,8 @@ import {
   saveProfile,
   listProfiles,
   setActiveProfile,
+  getDeviceConfig,
+  listAllDevices,
 } from '../config/profile.js';
 import { ConnectionManager } from '../client/connection-manager.js';
 import { SecurityAuditor } from '../safety/auditor.js';
@@ -880,6 +882,175 @@ program
 
     if (!result.passed) {
       process.exitCode = 1;
+    }
+  });
+
+program
+  .command('devices')
+  .alias('inventory')
+  .description('List all managed MikroTik routers from inventory.yml, profiles, or environment.')
+  .action(() => {
+    const devices = listAllDevices();
+    console.log(chalk.cyan.bold('\n=== Managed MikroTik Routers & Fleet Inventory ===\n'));
+    if (devices.length === 0) {
+      console.log(chalk.gray('No devices found in inventory.yml or profiles.'));
+    } else {
+      devices.forEach((d) => {
+        const srcBadge = chalk.yellow(`[${d.source.toUpperCase()}]`);
+        const portStr = chalk.gray(`:${d.port} (${d.transport.toUpperCase()})`);
+        console.log(`  ${srcBadge} ${chalk.bold(d.name.padEnd(16, ' '))} -> ${d.host}${portStr} (user: ${d.user})`);
+      });
+    }
+    console.log('');
+  });
+
+program
+  .command('logs')
+  .description('View live system and firewall logs from MikroTik router.')
+  .option('-d, --device <name>', 'Target router device from inventory')
+  .option('-l, --limit <count>', 'Number of log lines to show', '30')
+  .option('-t, --topic <topics>', 'Comma-separated topic filters (e.g. firewall,dhcp,warning)')
+  .action(async (opts) => {
+    const config = getDeviceConfig(opts.device);
+    const conn = new ConnectionManager(config);
+    try {
+      const limit = parseInt(opts.limit, 10) || 30;
+      const topics = opts.topic ? opts.topic.split(',').map((s: string) => s.trim()) : undefined;
+      const logs = await conn.getLogs({ limit, topics });
+
+      console.log(chalk.cyan.bold(`\n=== Router Logs (${logs.length} entries) [${config.host}] ===\n`));
+      if (logs.length === 0) {
+        console.log(chalk.gray('No matching log entries found.'));
+      } else {
+        logs.forEach((item) => {
+          const timeStr = chalk.gray(item.time || '');
+          const topicsStr = chalk.yellow(`[${item.topics || ''}]`);
+          console.log(`${timeStr} ${topicsStr} ${item.message || ''}`);
+        });
+      }
+      console.log('');
+    } catch (err) {
+      console.error(chalk.red(`Failed to fetch logs: ${err instanceof Error ? err.message : String(err)}`));
+      process.exitCode = 1;
+    } finally {
+      await conn.close();
+    }
+  });
+
+program
+  .command('poe')
+  .description('Inspect PoE port status or power-cycle a PoE-connected downstream device.')
+  .option('-d, --device <name>', 'Target router device from inventory')
+  .option('-l, --list', 'List PoE status across ethernet interfaces', true)
+  .option('--cycle <interface>', 'Power cycle a PoE port (e.g. ether2)')
+  .action(async (opts) => {
+    const config = getDeviceConfig(opts.device);
+    const conn = new ConnectionManager(config);
+    try {
+      if (opts.cycle) {
+        console.log(chalk.blue(`Power-cycling PoE on port ${opts.cycle}...`));
+        await conn.cyclePoePower(opts.cycle);
+        console.log(chalk.green(`✔ Successfully dispatched power-cycle to ${opts.cycle}.\n`));
+      } else {
+        const poe = await conn.getPoeStatus();
+        console.log(chalk.cyan.bold(`\n=== PoE Port Status [${config.host}] ===\n`));
+        if (poe.length === 0) {
+          console.log(chalk.gray('No PoE-capable ports detected or information unavailable.'));
+        } else {
+          poe.forEach((p) => {
+            const name = chalk.bold((p.name || 'eth').padEnd(12, ' '));
+            const status = p['poe-out-status'] ? chalk.green(p['poe-out-status']) : chalk.gray('off');
+            const voltage = p['poe-voltage'] ? `${p['poe-voltage']}V` : '-';
+            const current = p['poe-current'] ? `${p['poe-current']}mA` : '-';
+            const power = p['poe-power'] ? `${p['poe-power']}W` : '-';
+            console.log(`  ${name} Status: ${status} | Voltage: ${voltage} | Current: ${current} | Power: ${power}`);
+          });
+        }
+        console.log('');
+      }
+    } catch (err) {
+      console.error(chalk.red(`PoE operation failed: ${err instanceof Error ? err.message : String(err)}`));
+      process.exitCode = 1;
+    } finally {
+      await conn.close();
+    }
+  });
+
+program
+  .command('queue')
+  .description('Inspect Simple Queues or provision low-latency CAKE SQM queues.')
+  .option('-d, --device <name>', 'Target router device from inventory')
+  .option('-l, --list', 'List active simple queues', true)
+  .option('--cake', 'Create a CAKE SQM queue')
+  .option('--name <name>', 'Queue name', 'cake-sqm')
+  .option('--target <subnet>', 'Target CIDR or interface', '0.0.0.0/0')
+  .option('--upload <rate>', 'Max upload bandwidth (e.g. 50M)', '50M')
+  .option('--download <rate>', 'Max download bandwidth (e.g. 100M)', '100M')
+  .action(async (opts) => {
+    const config = getDeviceConfig(opts.device);
+    const conn = new ConnectionManager(config);
+    try {
+      if (opts.cake) {
+        console.log(chalk.blue(`Provisioning CAKE SQM queue '${opts.name}' (${opts.upload}/${opts.download}) for target ${opts.target}...`));
+        await conn.createCakeQueue({
+          name: opts.name,
+          target: opts.target,
+          upload: opts.upload,
+          download: opts.download,
+        });
+        console.log(chalk.green(`✔ Successfully configured CAKE Smart Queue Management on ${config.host}.\n`));
+      } else {
+        const queues = await conn.getQueues();
+        console.log(chalk.cyan.bold(`\n=== Simple Queues (${queues.length} total) [${config.host}] ===\n`));
+        if (queues.length === 0) {
+          console.log(chalk.gray('No simple queues configured.'));
+        } else {
+          queues.forEach((q) => {
+            const name = chalk.bold((q.name || '').padEnd(16, ' '));
+            const target = chalk.yellow((q.target || '').padEnd(18, ' '));
+            const maxLimit = chalk.green((q['max-limit'] || '').padEnd(16, ' '));
+            const type = chalk.gray(q.queue || 'default');
+            console.log(`  ${name} Target: ${target} Max: ${maxLimit} Type: ${type}`);
+          });
+        }
+        console.log('');
+      }
+    } catch (err) {
+      console.error(chalk.red(`Queue operation failed: ${err instanceof Error ? err.message : String(err)}`));
+      process.exitCode = 1;
+    } finally {
+      await conn.close();
+    }
+  });
+
+program
+  .command('wifi')
+  .alias('wireless')
+  .description('Inspect connected WiFi clients and signal metrics across registration tables.')
+  .option('-d, --device <name>', 'Target router device from inventory')
+  .action(async (opts) => {
+    const config = getDeviceConfig(opts.device);
+    const conn = new ConnectionManager(config);
+    try {
+      const clients = await conn.getWirelessClients();
+      console.log(chalk.cyan.bold(`\n=== Connected WiFi Clients (${clients.length} active) [${config.host}] ===\n`));
+      if (clients.length === 0) {
+        console.log(chalk.gray('No active wireless clients associated.'));
+      } else {
+        clients.forEach((c) => {
+          const mac = chalk.bold((c['mac-address'] || '').padEnd(18, ' '));
+          const iface = chalk.cyan((c.interface || '').padEnd(14, ' '));
+          const signal = c['signal-strength'] ? chalk.green(`${c['signal-strength']} dBm`) : '-';
+          const uptime = chalk.gray(c.uptime || '-');
+          console.log(`  ${mac} Interface: ${iface} Signal: ${signal} Uptime: ${uptime}`);
+        });
+      }
+      console.log('');
+    } catch (err) {
+      console.error(chalk.red(`Failed to fetch wireless clients: ${err instanceof Error ? err.message : String(err)}`));
+      process.exitCode = 1;
+    } finally {
+      await conn.close();
     }
   });
 

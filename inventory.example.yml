@@ -1,0 +1,27 @@
+# MikroTik-Skill Fleet Inventory Configuration
+# Defines routers managed by the CLI and AI MCP Server.
+# Place as 'inventory.yml' in the working directory or use environment variables.
+
+devices:
+  - name: core-router
+    host: 192.168.88.1
+    user: admin
+    password: "${ROUTEROS_PASSWORD}"
+    restPort: 443
+    useSsl: true
+    apiPort: 8728
+
+  - name: branch-router
+    host: 10.10.10.1
+    user: admin
+    password: "${BRANCH_ROUTER_PASSWORD}"
+    restPort: 443
+    useSsl: true
+    apiPort: 8728
+
+  - name: switch-floor1
+    host: 192.168.88.2
+    user: admin
+    password: "${SWITCH_PASSWORD}"
+    preferBinary: true
+    apiPort: 8728

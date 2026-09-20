@@ -6,15 +6,15 @@
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' https:; font-src 'self' data:; img-src 'self' data: https:;">
   
-  <title>MikroTik-Skill &mdash; Remote MCP Server &amp; RouterOS v7 Knowledge Gateway</title>
-  <meta name="title" content="MikroTik-Skill — Remote MCP Server & RouterOS v7 Knowledge Gateway">
-  <meta name="description" content="Production-grade MikroTik RouterOS v7 automation skill, Remote Model Context Protocol (MCP) server, and OpenAPI 3.1.0 gateway. Provides validated CLI templates for MTCRE, MTCSE, MTCUME, CAKE QoS, and WireGuard.">
-  <meta name="keywords" content="MikroTik, RouterOS v7, MCP, Model Context Protocol, Remote MCP, OpenAPI 3.1.0, ChatGPT Actions, Claude Projects, Gemini Gems, Cursor MCP, Windsurf MCP, MTCRE, MTCSE, MTCSWE, MTCUME, MTCTCE, CAKE SQM, WireGuard, User Manager v7">
+  <title>MikroTik-Skill &mdash; Production RouterOS v7 MCP Server &amp; Network Automation Toolkit</title>
+  <meta name="title" content="MikroTik-Skill — Production RouterOS v7 MCP Server & Network Automation Toolkit">
+  <meta name="description" content="Production-grade MikroTik RouterOS v7 automation skill, Remote Model Context Protocol (MCP) server, and OpenAPI 3.1.0 gateway. Mathematically certified asymmetric PCC load balancing, Curve25519 WireGuard provisioning, 7-pillar security audit, and 10-track blueprints.">
+  <meta name="keywords" content="MikroTik, RouterOS v7, MCP, Model Context Protocol, Remote MCP, OpenAPI 3.1.0, ChatGPT Actions, Claude Projects, Cursor MCP, Windsurf MCP, MTCRE, MTCSE, MTCSWE, MTCUME, MTCTCE, MTCNA, CAKE SQM, WireGuard, NetDevOps">
   <meta name="author" content="Ardian Ryan">
   <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
   <meta name="googlebot" content="index, follow, max-snippet:-1, max-image-preview:large">
   <meta name="bingbot" content="index, follow, max-snippet:-1, max-image-preview:large">
-  <meta name="theme-color" content="#0b0e14">
+  <meta name="theme-color" content="#090c10">
   <meta name="color-scheme" content="dark">
   <link rel="canonical" href="https://mikrotik-skill.vercel.app/">
 
@@ -29,8 +29,8 @@
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://mikrotik-skill.vercel.app/">
   <meta property="og:site_name" content="MikroTik-Skill">
-  <meta property="og:title" content="MikroTik-Skill — Remote MCP Server & RouterOS v7 Knowledge Gateway">
-  <meta property="og:description" content="Public Model Context Protocol (MCP) server and OpenAPI 3.1.0 gateway for MikroTik RouterOS v7. Compatible with ChatGPT, Claude, Gemini, Cursor, and Windsurf.">
+  <meta property="og:title" content="MikroTik-Skill — Production RouterOS v7 MCP Server & Automation Toolkit">
+  <meta property="og:description" content="Public Model Context Protocol (MCP) server and OpenAPI 3.1.0 gateway for MikroTik RouterOS v7. Compatible with ChatGPT, Claude, Cursor, and Windsurf.">
   <meta property="og:image" content="https://raw.githubusercontent.com/ardianryan/MikroTik-Skill/main/assets/mikrotik_repo_banner_1789787040310.jpg">
   <meta property="og:image:width" content="1280">
   <meta property="og:image:height" content="640">
@@ -39,7 +39,7 @@
   <!-- Twitter / X -->
   <meta property="twitter:card" content="summary_large_image">
   <meta property="twitter:url" content="https://mikrotik-skill.vercel.app/">
-  <meta property="twitter:title" content="MikroTik-Skill — Remote MCP Server & RouterOS v7 Knowledge Gateway">
+  <meta property="twitter:title" content="MikroTik-Skill — Production RouterOS v7 MCP Server & Automation Toolkit">
   <meta property="twitter:description" content="Public Model Context Protocol (MCP) server and OpenAPI 3.1.0 gateway for MikroTik RouterOS v7.">
   <meta property="twitter:image" content="https://raw.githubusercontent.com/ardianryan/MikroTik-Skill/main/assets/mikrotik_repo_banner_1789787040310.jpg">
 
@@ -53,7 +53,7 @@
         "@id": "https://mikrotik-skill.vercel.app/#website",
         "url": "https://mikrotik-skill.vercel.app/",
         "name": "MikroTik-Skill Gateway",
-        "description": "Public Model Context Protocol (MCP) server and OpenAPI gateway for MikroTik RouterOS v7."
+        "description": "Production Model Context Protocol (MCP) server and OpenAPI gateway for MikroTik RouterOS v7."
       },
       {
         "@type": "SoftwareApplication",
@@ -84,45 +84,54 @@
 
   <style>
     :root {
-      --bg: #0b0e14;
-      --surface: #12161f;
-      --surface-subtle: #171d28;
-      --border: #232a38;
+      --bg: #090c10;
+      --bg-subtle: #0d1117;
+      --surface: #121824;
+      --surface-subtle: #171e2c;
+      --surface-hover: #1c2536;
+      --border: #21293a;
       --border-focus: #38bdf8;
-      --text: #c5cbd5;
+      --text: #c9d1d9;
+      --text-bright: #f0f6fc;
       --heading: #ffffff;
-      --muted: #7e889b;
-      --blue: #38bdf8;
-      --green: #22c55e;
-      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      --muted: #8b949e;
+      --accent: #38bdf8;
+      --accent-dim: rgba(56, 189, 248, 0.12);
+      --accent-glow: rgba(56, 189, 248, 0.25);
+      --green: #2ea043;
+      --green-dim: rgba(46, 160, 67, 0.15);
+      --yellow: #d29922;
+      --yellow-dim: rgba(210, 153, 34, 0.15);
+      --red: #f85149;
+      --red-dim: rgba(248, 81, 73, 0.15);
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, -apple-system, sans-serif;
+      --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+      --container-max: 1120px;
     }
+
     * {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
       scrollbar-width: thin;
-      scrollbar-color: #232a38 #0b0e14;
+      scrollbar-color: #21293a #090c10;
     }
 
-    /* Custom Unified Scrollbars */
+    /* Custom Unified Scrollbar */
     ::-webkit-scrollbar {
       width: 8px;
       height: 8px;
     }
     ::-webkit-scrollbar-track {
-      background: #0b0e14;
+      background: #090c10;
     }
     ::-webkit-scrollbar-thumb {
-      background: #232a38;
+      background: #21293a;
       border-radius: 4px;
-      border: 2px solid #0b0e14;
+      border: 2px solid #090c10;
     }
     ::-webkit-scrollbar-thumb:hover {
       background: #38bdf8;
-    }
-    ::-webkit-scrollbar-corner {
-      background: #0b0e14;
     }
 
     body {
@@ -131,101 +140,405 @@
       font-family: var(--font-sans);
       font-size: 15px;
       line-height: 1.6;
-      padding: 3rem 1.5rem;
-      min-height: 100vh;
       -webkit-font-smoothing: antialiased;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
     }
-    .wrapper {
-      max-width: 860px;
-      margin: 0 auto;
-    }
-    header {
-      margin-bottom: 2.5rem;
+
+    /* Top Sticky Navigation Bar */
+    .navbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(9, 12, 16, 0.88);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border);
-      padding-bottom: 2rem;
     }
-    .top-bar {
+    .nav-container {
+      max-width: var(--container-max);
+      margin: 0 auto;
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.75rem;
+      text-decoration: none;
+      color: var(--heading);
+      font-weight: 700;
+      font-size: 1.05rem;
+      letter-spacing: -0.01em;
+    }
+    .brand-icon {
+      width: 26px;
+      height: 26px;
+      border-radius: 6px;
+      display: block;
+      border: 1px solid var(--border);
+    }
+    .version-tag {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      background: var(--surface-subtle);
+      border: 1px solid var(--border);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* View Navigation Tabs */
+    .nav-tabs {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      background: var(--surface);
+      padding: 0.25rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    .nav-tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-family: var(--font-sans);
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 0.45rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 140ms ease;
+    }
+    .nav-tab-btn:hover {
+      color: var(--text-bright);
+      background: var(--surface-hover);
+    }
+    .nav-tab-btn.active {
+      color: #ffffff;
+      background: var(--accent-dim);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      color: var(--green);
+      background: var(--green-dim);
+      padding: 0.25rem 0.6rem;
+      border-radius: 12px;
+      border: 1px solid rgba(46, 160, 67, 0.3);
+    }
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+    }
+    .btn-github {
+      color: var(--text-bright);
+      font-size: 0.82rem;
+      font-weight: 600;
+      text-decoration: none;
+      border: 1px solid var(--border);
+      padding: 0.35rem 0.8rem;
+      border-radius: 6px;
+      background: var(--surface);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      transition: all 140ms ease;
+    }
+    .btn-github:hover {
+      border-color: var(--accent);
+      background: var(--surface-hover);
+    }
+
+    /* Main Container */
+    .main-wrapper {
+      max-width: var(--container-max);
+      margin: 0 auto;
+      padding: 2.5rem 1.5rem;
+      flex: 1;
+      width: 100%;
+    }
+
+    /* View Sections */
+    .view-panel {
+      display: none;
+      animation: fadeIn 180ms ease-out forwards;
+    }
+    .view-panel.active {
+      display: block;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Hero Section (Overview) */
+    .hero {
+      margin-bottom: 3.5rem;
+    }
+    .hero-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+      background: var(--accent-dim);
+      padding: 0.3rem 0.75rem;
+      border-radius: 20px;
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      margin-bottom: 1.25rem;
+    }
+    h1.hero-title {
+      font-size: 2.75rem;
+      font-weight: 800;
+      color: var(--heading);
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin-bottom: 1.25rem;
+      max-width: 900px;
+    }
+    .hero-title span.highlight {
+      color: var(--accent);
+    }
+    .hero-desc {
+      color: var(--muted);
+      font-size: 1.15rem;
+      line-height: 1.6;
+      max-width: 820px;
+      margin-bottom: 2rem;
+    }
+    .hero-cta-group {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 2.5rem;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #090c10;
+      font-family: var(--font-sans);
+      font-weight: 700;
+      font-size: 0.92rem;
+      text-decoration: none;
+      padding: 0.75rem 1.4rem;
+      border-radius: 7px;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 140ms ease;
+      cursor: pointer;
+      border: none;
+    }
+    .btn-primary:hover {
+      background: #7dd3fc;
+      box-shadow: 0 0 16px rgba(56, 189, 248, 0.4);
+    }
+    .btn-secondary {
+      background: var(--surface);
+      color: var(--text-bright);
+      font-family: var(--font-sans);
+      font-weight: 600;
+      font-size: 0.92rem;
+      text-decoration: none;
+      padding: 0.75rem 1.4rem;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 140ms ease;
+    }
+    .btn-secondary:hover {
+      border-color: var(--muted);
+      background: var(--surface-hover);
+    }
+    .hero-cli-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      background: #05070a;
+      border: 1px solid var(--border);
+      padding: 0.55rem 1rem;
+      border-radius: 6px;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      color: var(--text-bright);
+      cursor: pointer;
+      transition: border-color 140ms ease;
+    }
+    .hero-cli-badge:hover {
+      border-color: var(--accent);
+    }
+    .hero-cli-badge span.prefix {
+      color: var(--muted);
+      user-select: none;
+    }
+
+    /* Metric Grid */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+      margin-bottom: 3.5rem;
+    }
+    .metric-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem 1.5rem;
+      transition: border-color 140ms ease;
+    }
+    .metric-card:hover {
+      border-color: var(--surface-hover);
+    }
+    .metric-number {
+      font-family: var(--font-mono);
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: var(--heading);
+      margin-bottom: 0.25rem;
+    }
+    .metric-label {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--text-bright);
+      margin-bottom: 0.25rem;
+    }
+    .metric-sub {
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    /* Architecture Flow Card */
+    .arch-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.75rem;
+      margin-bottom: 3.5rem;
+    }
+    .arch-header {
       display: flex;
       justify-content: space-between;
-      align-items: center;
+      align-items: flex-start;
       margin-bottom: 1.5rem;
       flex-wrap: wrap;
       gap: 1rem;
     }
-    .logo-group {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.65rem;
-      text-decoration: none;
-      color: var(--heading);
+    .arch-title {
+      font-size: 1.2rem;
       font-weight: 700;
-      font-size: 1.15rem;
+      color: var(--heading);
+      margin-bottom: 0.35rem;
     }
-    .logo-img {
-      width: 22px;
-      height: 22px;
-      border-radius: 4px;
-      display: block;
-    }
-    .repo-link {
+    .arch-desc {
       color: var(--muted);
-      font-size: 0.85rem;
-      text-decoration: none;
+      font-size: 0.9rem;
+      max-width: 650px;
+    }
+    .arch-diagram {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.25rem;
+    }
+    .diagram-box {
+      background: var(--surface-subtle);
       border: 1px solid var(--border);
-      padding: 0.3rem 0.75rem;
-      border-radius: 6px;
-      background: var(--surface);
-      transition: all 120ms ease;
+      border-radius: 8px;
+      padding: 1.25rem;
     }
-    .repo-link:hover {
-      color: var(--heading);
-      border-color: var(--blue);
-    }
-    h1 {
-      font-size: 2rem;
+    .diagram-badge {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
       font-weight: 700;
-      color: var(--heading);
-      letter-spacing: -0.02em;
-      line-height: 1.25;
+      padding: 0.2rem 0.55rem;
+      border-radius: 4px;
+      display: inline-block;
       margin-bottom: 0.75rem;
     }
-    .lead {
-      color: var(--muted);
-      font-size: 1.05rem;
-      line-height: 1.6;
-      max-width: 760px;
+    .diagram-badge.cloud {
+      background: var(--accent-dim);
+      color: var(--accent);
+      border: 1px solid rgba(56, 189, 248, 0.3);
     }
-    .notice {
-      margin-top: 1.25rem;
-      font-size: 0.88rem;
-      color: var(--muted);
-      border-left: 2px solid var(--blue);
-      padding-left: 0.85rem;
+    .diagram-badge.local {
+      background: var(--green-dim);
+      color: var(--green);
+      border: 1px solid rgba(46, 160, 67, 0.3);
     }
-    .notice strong {
+    .diagram-title {
+      font-size: 1rem;
+      font-weight: 700;
       color: var(--heading);
+      margin-bottom: 0.5rem;
+    }
+    .diagram-list {
+      list-style: none;
+      font-size: 0.85rem;
+      color: var(--text);
+    }
+    .diagram-list li {
+      margin-bottom: 0.4rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.45rem;
+    }
+    .diagram-list li span.bullet {
+      color: var(--accent);
+      font-weight: 700;
     }
 
-    h2 {
-      font-size: 1.25rem;
+    /* Section Headings */
+    .section-head {
+      margin-bottom: 1.5rem;
+    }
+    .section-title {
+      font-size: 1.45rem;
       font-weight: 700;
       color: var(--heading);
       letter-spacing: -0.01em;
-      margin-top: 2.75rem;
-      margin-bottom: 0.5rem;
+      margin-bottom: 0.35rem;
     }
-    .section-intro {
-      font-size: 0.9rem;
+    .section-sub {
       color: var(--muted);
-      margin-bottom: 1rem;
+      font-size: 0.92rem;
     }
 
-    /* Tabs */
+    /* Universal Tab Containers & Panels */
     .tab-container {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 8px;
+      border-radius: 9px;
       overflow: hidden;
+      margin-bottom: 2.5rem;
     }
     .tab-header {
       display: flex;
@@ -240,29 +553,36 @@
       font-family: var(--font-sans);
       font-size: 0.85rem;
       font-weight: 600;
-      padding: 0.75rem 1.15rem;
+      padding: 0.8rem 1.25rem;
       cursor: pointer;
       white-space: nowrap;
       border-bottom: 2px solid transparent;
       transition: color 120ms ease;
     }
     .tab-btn:hover {
-      color: var(--heading);
+      color: var(--text-bright);
     }
     .tab-btn.active {
       color: var(--heading);
-      border-bottom-color: var(--blue);
+      border-bottom-color: var(--accent);
       background: var(--surface);
     }
     .tab-panel {
-      padding: 1.25rem;
+      padding: 1.5rem;
+      display: none;
     }
+    .tab-panel.active {
+      display: block;
+    }
+
+    /* Code Snippet & Copy */
     .panel-meta {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 0.65rem;
-      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+      gap: 0.75rem;
+      flex-wrap: wrap;
     }
     .file-path {
       font-family: var(--font-mono);
@@ -272,149 +592,88 @@
     .copy-btn {
       background: var(--surface-subtle);
       border: 1px solid var(--border);
-      color: var(--heading);
+      color: var(--text-bright);
       font-size: 0.78rem;
       font-weight: 600;
-      padding: 0.35rem 0.75rem;
+      padding: 0.35rem 0.8rem;
       border-radius: 5px;
       cursor: pointer;
       transition: all 120ms ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
     }
     .copy-btn:hover {
-      border-color: var(--blue);
-      color: var(--blue);
+      border-color: var(--accent);
+      color: var(--accent);
     }
     pre {
-      background: #07090d;
+      background: #05070a;
       border: 1px solid var(--border);
       border-radius: 6px;
-      padding: 1rem 1.15rem;
+      padding: 1.15rem;
       overflow-x: auto;
       font-family: var(--font-mono);
       font-size: 0.85rem;
       color: #e6edf3;
-      line-height: 1.5;
-      scrollbar-width: thin;
-      scrollbar-color: #232a38 #07090d;
-    }
-    pre::-webkit-scrollbar {
-      height: 6px;
-    }
-    pre::-webkit-scrollbar-track {
-      background: #07090d;
-    }
-    pre::-webkit-scrollbar-thumb {
-      background: #232a38;
-      border-radius: 3px;
-    }
-    pre::-webkit-scrollbar-thumb:hover {
-      background: #38bdf8;
+      line-height: 1.55;
     }
     .panel-instruction {
-      margin-top: 0.75rem;
+      margin-top: 0.85rem;
       font-size: 0.85rem;
       color: var(--muted);
     }
 
-    /* Tools Table */
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.9rem;
-      margin-top: 0.5rem;
-    }
-    th, td {
-      padding: 0.75rem 1rem;
-      text-align: left;
-      border-bottom: 1px solid var(--border);
-    }
-    th {
-      color: var(--muted);
-      font-size: 0.78rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }
-    td code {
-      font-family: var(--font-mono);
-      font-size: 0.85rem;
-      color: var(--blue);
-    }
-    td.desc {
-      color: var(--text);
-    }
-
-    /* Links */
-    a.doc-link {
-      font-family: var(--font-mono);
-      font-size: 0.88rem;
-      color: var(--blue);
-      text-decoration: none;
-    }
-    a.doc-link:hover {
-      text-decoration: underline;
-    }
-
-    /* Interactive Playground */
-    .playground-tabs {
-      display: flex;
-      background: var(--surface-subtle);
-      border-bottom: 1px solid var(--border);
-      overflow-x: auto;
-    }
-    .playground-panel {
-      padding: 1.25rem;
-      display: none;
-    }
-    .playground-panel.active {
-      display: block;
-    }
+    /* Form Controls for Workbench */
     .form-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 0.85rem;
-      margin-bottom: 1rem;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.25rem;
     }
     .form-group {
-      margin-bottom: 0.85rem;
+      margin-bottom: 1rem;
     }
     .form-group label {
       display: block;
       font-size: 0.82rem;
       font-weight: 600;
       color: var(--heading);
-      margin-bottom: 0.35rem;
+      margin-bottom: 0.4rem;
     }
     .form-control {
       width: 100%;
-      background: #07090d;
+      background: #05070a;
       border: 1px solid var(--border);
-      border-radius: 5px;
+      border-radius: 6px;
       color: #e6edf3;
       font-family: var(--font-mono);
       font-size: 0.85rem;
-      padding: 0.6rem 0.8rem;
+      padding: 0.65rem 0.85rem;
       outline: none;
-      transition: border-color 120ms ease;
+      transition: border-color 140ms ease;
     }
     .form-control:focus {
-      border-color: var(--blue);
+      border-color: var(--accent);
     }
     textarea.form-control {
-      min-height: 120px;
+      min-height: 140px;
       resize: vertical;
     }
     .action-btn {
-      background: var(--blue);
-      color: #0b0e14;
+      background: var(--accent);
+      color: #090c10;
       font-family: var(--font-sans);
       font-weight: 700;
-      font-size: 0.85rem;
+      font-size: 0.88rem;
       border: none;
-      border-radius: 5px;
-      padding: 0.6rem 1.25rem;
+      border-radius: 6px;
+      padding: 0.65rem 1.35rem;
       cursor: pointer;
       transition: opacity 120ms ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
     }
     .action-btn:hover {
       opacity: 0.9;
@@ -424,135 +683,357 @@
       cursor: not-allowed;
     }
     .result-section {
-      margin-top: 1.25rem;
+      margin-top: 1.5rem;
       border-top: 1px dashed var(--border);
-      padding-top: 1rem;
+      padding-top: 1.25rem;
     }
+
+    /* Linter Badges */
     .lint-badge {
       display: inline-block;
-      padding: 0.2rem 0.6rem;
-      font-size: 0.75rem;
+      padding: 0.2rem 0.55rem;
+      font-size: 0.72rem;
       font-weight: 700;
       border-radius: 4px;
       margin-right: 0.4rem;
     }
-    .badge-crit { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid #ef4444; }
-    .badge-high { background: rgba(249, 115, 22, 0.2); color: #fb923c; border: 1px solid #f97316; }
-    .badge-warn { background: rgba(234, 179, 8, 0.2); color: #facc15; border: 1px solid #eab308; }
-    .badge-pass { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid #22c55e; }
+    .badge-crit { background: var(--red-dim); color: var(--red); border: 1px solid rgba(248, 81, 73, 0.35); }
+    .badge-high { background: rgba(249, 115, 22, 0.15); color: #fb923c; border: 1px solid rgba(249, 115, 22, 0.35); }
+    .badge-warn { background: var(--yellow-dim); color: var(--yellow); border: 1px solid rgba(210, 153, 34, 0.35); }
+    .badge-pass { background: var(--green-dim); color: var(--green); border: 1px solid rgba(46, 160, 67, 0.35); }
     .lint-card {
       background: var(--surface-subtle);
       border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 0.85rem;
-      margin-bottom: 0.65rem;
+      border-radius: 7px;
+      padding: 0.9rem 1.1rem;
+      margin-bottom: 0.75rem;
     }
-    .lint-card.crit { border-left: 3px solid #ef4444; }
-    .lint-card.high { border-left: 3px solid #f97316; }
-    .lint-card.warn { border-left: 3px solid #eab308; }
+    .lint-card.crit { border-left: 3px solid var(--red); }
+    .lint-card.high { border-left: 3px solid #fb923c; }
+    .lint-card.warn { border-left: 3px solid var(--yellow); }
+
     .qr-container {
       display: flex;
-      gap: 1.5rem;
+      gap: 1.75rem;
       align-items: flex-start;
       margin-top: 1rem;
       flex-wrap: wrap;
     }
     .qr-image {
       background: #ffffff;
-      padding: 8px;
-      border-radius: 6px;
-      width: 160px;
-      height: 160px;
+      padding: 10px;
+      border-radius: 8px;
+      width: 170px;
+      height: 170px;
+      display: block;
     }
 
-    footer {
-      margin-top: 4rem;
-      padding-top: 1.5rem;
-      border-top: 1px solid var(--border);
-      font-size: 0.85rem;
+    /* Tables (Docs & Schemas) */
+    .table-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      overflow: hidden;
+      margin-bottom: 2.5rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+    }
+    th, td {
+      padding: 0.85rem 1.15rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      background: var(--surface-subtle);
       color: var(--muted);
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    tr:last-child td {
+      border-bottom: none;
+    }
+    td code {
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      color: var(--accent);
+      background: #05070a;
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+    }
+    td.desc {
+      color: var(--text);
+      line-height: 1.5;
+    }
+    a.doc-link {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+    }
+    a.doc-link:hover {
+      text-decoration: underline;
+    }
+
+    /* Template Explorer */
+    .template-select-bar {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      margin-bottom: 1.25rem;
+      flex-wrap: wrap;
+    }
+    .template-badge {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      padding: 0.2rem 0.6rem;
+      border-radius: 4px;
+      background: var(--accent-dim);
+      color: var(--accent);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      font-weight: 700;
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border);
+      background: var(--bg-subtle);
+      padding: 2.5rem 1.5rem;
+      margin-top: 3rem;
+    }
+    .footer-container {
+      max-width: var(--container-max);
+      margin: 0 auto;
       display: flex;
       justify-content: space-between;
+      align-items: center;
       flex-wrap: wrap;
-      gap: 1rem;
+      gap: 1.25rem;
+      font-size: 0.85rem;
+      color: var(--muted);
     }
-    footer a {
+    .footer-links {
+      display: flex;
+      gap: 1.25rem;
+    }
+    .footer-links a {
       color: var(--muted);
       text-decoration: none;
+      transition: color 120ms ease;
     }
-    footer a:hover {
+    .footer-links a:hover {
       color: var(--heading);
+    }
+
+    @media (max-width: 768px) {
+      h1.hero-title {
+        font-size: 2.1rem;
+      }
+      .nav-container {
+        padding: 0.75rem 1rem;
+      }
+      .nav-tabs {
+        width: 100%;
+        justify-content: space-around;
+      }
     }
   </style>
 </head>
 <body>
-  <div class="wrapper">
-    <header>
-      <div class="top-bar">
-        <a href="/" class="logo-group">
-          <img src="/icon.png?v=3" alt="MikroTik" class="logo-img" width="22" height="22">
-          <span>MikroTik-Skill</span>
-        </a>
-        <a href="https://github.com/ardianryan/MikroTik-Skill" target="_blank" rel="noopener noreferrer" class="repo-link">
-          GitHub Repository
+
+  <!-- Top Sticky Navigation Bar -->
+  <header class="navbar">
+    <div class="nav-container">
+      <a href="#overview" class="brand" onclick="switchView('overview')">
+        <img src="/icon.png?v=3" alt="MikroTik" class="brand-icon" width="26" height="26">
+        <span>MikroTik-Skill</span>
+        <span class="version-tag">v1.1.0</span>
+      </a>
+
+      <nav class="nav-tabs" role="tablist">
+        <button class="nav-tab-btn active" id="btn-view-overview" onclick="switchView('overview')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+          Overview
+        </button>
+        <button class="nav-tab-btn" id="btn-view-tools" onclick="switchView('tools')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
+          Workbench Tools
+        </button>
+        <button class="nav-tab-btn" id="btn-view-docs" onclick="switchView('docs')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+          API &amp; Docs
+        </button>
+      </nav>
+
+      <div class="nav-actions">
+        <span class="status-badge"><span class="status-dot"></span> MCP Ready</span>
+        <a href="https://github.com/ardianryan/MikroTik-Skill" target="_blank" rel="noopener noreferrer" class="btn-github">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+          GitHub
         </a>
       </div>
+    </div>
+  </header>
 
-      <h1>MikroTik RouterOS v7 Remote MCP &amp; Knowledge Gateway</h1>
-      <p class="lead">A public Model Context Protocol (MCP) server and OpenAPI gateway providing validated RouterOS v7 configuration templates, kernel FIB verification, and offline configuration sanitization.</p>
+  <main class="main-wrapper">
 
-      <p class="notice">
-        <strong>Zero credentials required:</strong> This gateway runs offline reference logic and script generators. It does not connect to or store credentials for your physical router.
-      </p>
-    </header>
+    <!-- ================================================================= -->
+    <!-- VIEW 1: OVERVIEW & ARCHITECTURE                                    -->
+    <!-- ================================================================= -->
+    <section class="view-panel active" id="view-overview">
+      <div class="hero">
+        <div class="hero-eyebrow">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"></circle></svg>
+          RouterOS v7 Enterprise Automation Standard
+        </div>
+        <h1 class="hero-title">
+          Deterministic Network Engineering <br>Meets <span class="highlight">Modern AI Agents</span>
+        </h1>
+        <p class="hero-desc">
+          MikroTik-Skill provides Model Context Protocol (MCP) tooling and OpenAPI 3.1.0 specifications for LLMs. Generate mathematically certified multi-WAN PCC configurations, Curve25519 WireGuard keypairs, 7-pillar security audits, and 10-track blueprints without exposing credentials.
+        </p>
 
-    <main>
-      <h2>Connect to AI Tools</h2>
-      <p class="section-intro">Select your client to view the configuration or schema URL.</p>
+        <div class="hero-cta-group">
+          <button class="btn-primary" onclick="switchView('tools')">
+            Launch Workbench
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+          </button>
+          <button class="btn-secondary" onclick="switchView('docs')">
+            View API &amp; MCP Specs
+          </button>
+          <div class="hero-cli-badge" onclick="copySnippetText('npx mikrotik-skill mcp')">
+            <span class="prefix">$</span> npx mikrotik-skill mcp
+          </div>
+        </div>
+      </div>
+
+      <!-- 4 Metric Cards -->
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-number">10 Tracks</div>
+          <div class="metric-label">Certified Blueprints</div>
+          <div class="metric-sub">MTCNA through MTCWE RouterOS v7 scripts</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-number">14 Tools</div>
+          <div class="metric-label">Model Context Protocol</div>
+          <div class="metric-sub">Zero-friction tool-calling for LLM agents</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-number">0 Secrets</div>
+          <div class="metric-label">Air-Gapped Cloud Mode</div>
+          <div class="metric-sub">Pure reference logic without storing router tokens</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-number">REST &amp; 8728</div>
+          <div class="metric-label">Dual Transport Engine</div>
+          <div class="metric-sub">Native REST API with binary port fallback</div>
+        </div>
+      </div>
+
+      <!-- Dual Architecture Flow -->
+      <div class="arch-card">
+        <div class="arch-header">
+          <div>
+            <h3 class="arch-title">Secure Dual-Architecture Pipeline</h3>
+            <p class="arch-desc">Guarantees zero credential leakage by separating cloud intelligence from private router execution.</p>
+          </div>
+        </div>
+        <div class="arch-diagram">
+          <div class="diagram-box">
+            <span class="diagram-badge cloud">AIR-GAPPED CLOUD GATEWAY (Vercel)</span>
+            <div class="diagram-title">Knowledge &amp; Synthesis</div>
+            <ul class="diagram-list">
+              <li><span class="bullet">&bull;</span> Public SSE endpoint (<code>/sse</code>) &amp; OpenAPI (<code>/openapi.json</code>)</li>
+              <li><span class="bullet">&bull;</span> Asymmetric PCC GCD stream calculations</li>
+              <li><span class="bullet">&bull;</span> Curve25519 Road-Warrior WireGuard provisioning</li>
+              <li><span class="bullet">&bull;</span> Static NetDevOps script linting &amp; credential masking</li>
+              <li><span class="bullet">&bull;</span> <strong>Zero router IP, user, or password credentials accepted</strong></li>
+            </ul>
+          </div>
+          <div class="diagram-box">
+            <span class="diagram-badge local">LOCAL RUNTIME (Your Machine / Bastion)</span>
+            <div class="diagram-title">Execution &amp; Safe Watchdog</div>
+            <ul class="diagram-list">
+              <li><span class="bullet">&bull;</span> Local CLI binary (<code>mtik</code>) &amp; stdio MCP server</li>
+              <li><span class="bullet">&bull;</span> Direct connection to LAN/VPN router (REST or Port 8728)</li>
+              <li><span class="bullet">&bull;</span> Automated 30-second safe-mode rollback watchdog</li>
+              <li><span class="bullet">&bull;</span> Live 7-pillar security audit &amp; Mangle placement checks</li>
+              <li><span class="bullet">&bull;</span> Multi-router fleet inventory (<code>inventory.yml</code>)</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI Client Connect Tabs -->
+      <div class="section-head">
+        <h2 class="section-title">Connect to Your AI Agent &amp; IDE</h2>
+        <p class="section-sub">Configure Cursor, Windsurf, Claude Desktop, VS Code, ChatGPT, or Claude Code in seconds.</p>
+      </div>
 
       <div class="tab-container">
         <div class="tab-header" role="tablist">
-          <button class="tab-btn active" onclick="setTab('cursor')" id="tab-cursor" role="tab">Cursor</button>
-          <button class="tab-btn" onclick="setTab('windsurf')" id="tab-windsurf" role="tab">Windsurf</button>
-          <button class="tab-btn" onclick="setTab('claude-desktop')" id="tab-claude-desktop" role="tab">Claude Desktop</button>
-          <button class="tab-btn" onclick="setTab('vscode')" id="tab-vscode" role="tab">VS Code (Cline)</button>
-          <button class="tab-btn" onclick="setTab('chatgpt')" id="tab-chatgpt" role="tab">ChatGPT (Custom GPT)</button>
-          <button class="tab-btn" onclick="setTab('claude-web')" id="tab-claude-web" role="tab">Claude.ai Web</button>
-          <button class="tab-btn" onclick="setTab('claude-code')" id="tab-claude-code" role="tab">Claude Code CLI</button>
+          <button class="tab-btn active" onclick="setIdeTab('cursor')" id="tab-cursor" role="tab">Cursor</button>
+          <button class="tab-btn" onclick="setIdeTab('windsurf')" id="tab-windsurf" role="tab">Windsurf</button>
+          <button class="tab-btn" onclick="setIdeTab('claude-desktop')" id="tab-claude-desktop" role="tab">Claude Desktop</button>
+          <button class="tab-btn" onclick="setIdeTab('vscode')" id="tab-vscode" role="tab">VS Code (Cline)</button>
+          <button class="tab-btn" onclick="setIdeTab('chatgpt')" id="tab-chatgpt" role="tab">ChatGPT Actions</button>
+          <button class="tab-btn" onclick="setIdeTab('claude-code')" id="tab-claude-code" role="tab">Claude Code CLI</button>
+          <button class="tab-btn" onclick="setIdeTab('claude-web')" id="tab-claude-web" role="tab">Claude.ai Web</button>
         </div>
 
-        <div class="tab-panel">
+        <div class="tab-panel active" style="display: block;">
           <div class="panel-meta">
             <span class="file-path" id="targetFile">.cursor/mcp.json</span>
-            <button class="copy-btn" onclick="copySnippet()" id="copyBtn">Copy</button>
+            <button class="copy-btn" onclick="copySnippet()" id="copyBtn">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+              Copy
+            </button>
           </div>
           <pre><code id="codeContent"></code></pre>
           <p class="panel-instruction" id="instruction"></p>
         </div>
       </div>
+    </section>
 
-      <h2>Interactive Web Playground</h2>
-      <p class="section-intro">Run zero-credential network automation tasks directly in your browser or via REST API.</p>
+    <!-- ================================================================= -->
+    <!-- VIEW 2: INTERACTIVE WORKBENCH TOOLS                               -->
+    <!-- ================================================================= -->
+    <section class="view-panel" id="view-tools">
+      <div class="section-head">
+        <h2 class="section-title">Zero-Credential Engineering Workbench</h2>
+        <p class="section-sub">Perform complex network calculations, keypair generation, and script audits directly in your browser or through the API.</p>
+      </div>
 
-      <div class="tab-container" style="margin-bottom: 2.5rem;">
+      <div class="tab-container">
         <div class="tab-header" role="tablist">
-          <button class="tab-btn active" onclick="setPlaygroundTab('sanitizer')" id="pg-tab-sanitizer">Config Sanitizer</button>
-          <button class="tab-btn" onclick="setPlaygroundTab('pcc')" id="pg-tab-pcc">PCC Calculator</button>
-          <button class="tab-btn" onclick="setPlaygroundTab('wireguard')" id="pg-tab-wireguard">WireGuard Peer &amp; QR</button>
-          <button class="tab-btn" onclick="setPlaygroundTab('linter')" id="pg-tab-linter">NetDevOps Linter</button>
+          <button class="tab-btn active" onclick="setWorkbenchTab('sanitizer')" id="wb-tab-sanitizer">Config Sanitizer</button>
+          <button class="tab-btn" onclick="setWorkbenchTab('pcc')" id="wb-tab-pcc">PCC Calculator</button>
+          <button class="tab-btn" onclick="setWorkbenchTab('wireguard')" id="wb-tab-wireguard">WireGuard Peer &amp; QR</button>
+          <button class="tab-btn" onclick="setWorkbenchTab('linter')" id="wb-tab-linter">NetDevOps Linter</button>
+          <button class="tab-btn" onclick="setWorkbenchTab('templates')" id="wb-tab-templates">10-Track Blueprints</button>
         </div>
 
         <!-- 1. Sanitizer Panel -->
-        <div class="playground-panel active" id="pg-panel-sanitizer">
+        <div class="tab-panel active" id="wb-panel-sanitizer">
           <div class="form-group">
-            <label for="sanitizerInput">Raw RouterOS Script or Export</label>
-            <textarea id="sanitizerInput" class="form-control" placeholder="Paste /export or .rsc snippet with passwords, MAC addresses, or serial numbers..."></textarea>
+            <label for="sanitizerInput">Raw RouterOS Script or /export Content</label>
+            <textarea id="sanitizerInput" class="form-control" placeholder="Paste /export or .rsc snippet containing passwords, MAC addresses, serial numbers, or VPN pre-shared keys..."></textarea>
           </div>
-          <button class="action-btn" onclick="runSanitize()" id="btnSanitize">Redact Secrets Offline</button>
+          <button class="action-btn" onclick="runSanitize()" id="btnSanitize">
+            Redact Secrets Offline
+          </button>
 
           <div class="result-section" id="sanitizerResultSection" style="display: none;">
             <div class="panel-meta">
-              <span class="file-path">Sanitized Output (100% Safe to Share with AI)</span>
+              <span class="file-path">Sanitized Output (Safe to share with AI or public repositories)</span>
               <button class="copy-btn" onclick="copyPlaygroundOutput('sanitizerOutput')">Copy</button>
             </div>
             <pre><code id="sanitizerOutput"></code></pre>
@@ -560,16 +1041,16 @@
         </div>
 
         <!-- 2. PCC Calculator Panel -->
-        <div class="playground-panel" id="pg-panel-pcc">
+        <div class="tab-panel" id="wb-panel-pcc">
           <div class="form-grid">
             <div class="form-group">
-              <label for="pccWans">WAN Interfaces &amp; Bandwidth (Weights)</label>
+              <label for="pccWans">WAN Interfaces &amp; Bandwidth Ratios</label>
               <input type="text" id="pccWans" class="form-control" value="ISP1=100, ISP2=50" placeholder="e.g. ISP1=100, ISP2=50 or WAN1=1, WAN2=1, WAN3=2">
             </div>
             <div class="form-group">
               <label for="pccClassifier">Classifier</label>
               <select id="pccClassifier" class="form-control">
-                <option value="both-addresses-and-ports">both-addresses-and-ports (Recommended)</option>
+                <option value="both-addresses-and-ports">both-addresses-and-ports (Recommended for HTTPS)</option>
                 <option value="both-addresses">both-addresses</option>
                 <option value="src-address">src-address</option>
                 <option value="dst-address">dst-address</option>
@@ -580,7 +1061,7 @@
               <input type="text" id="pccLan" class="form-control" value="bridge-lan">
             </div>
           </div>
-          <button class="action-btn" onclick="runPcc()" id="btnPcc">Generate v7 PCC Script</button>
+          <button class="action-btn" onclick="runPcc()" id="btnPcc">Generate RouterOS v7 Script</button>
 
           <div class="result-section" id="pccResultSection" style="display: none;">
             <div class="panel-meta">
@@ -592,14 +1073,14 @@
         </div>
 
         <!-- 3. WireGuard Panel -->
-        <div class="playground-panel" id="pg-panel-wireguard">
+        <div class="tab-panel" id="wb-panel-wireguard">
           <div class="form-grid">
             <div class="form-group">
-              <label for="wgClientName">Client Name</label>
+              <label for="wgClientName">Client Identifier</label>
               <input type="text" id="wgClientName" class="form-control" value="laptop-alice">
             </div>
             <div class="form-group">
-              <label for="wgClientIp">Client VPN IP</label>
+              <label for="wgClientIp">Client VPN IP &amp; Subnet</label>
               <input type="text" id="wgClientIp" class="form-control" value="10.10.0.2/24">
             </div>
             <div class="form-group">
@@ -617,7 +1098,7 @@
             <div class="qr-container">
               <div>
                 <img id="wgQrImg" class="qr-image" alt="WireGuard QR Code">
-                <p style="font-size: 0.75rem; color: var(--muted); margin-top: 0.35rem; text-align: center;">Scan with WireGuard App</p>
+                <p style="font-size: 0.75rem; color: var(--muted); margin-top: 0.45rem; text-align: center;">Scan with WireGuard Mobile App</p>
               </div>
               <div style="flex: 1; min-width: 260px;">
                 <div class="panel-meta">
@@ -625,8 +1106,8 @@
                   <button class="copy-btn" onclick="copyPlaygroundOutput('wgRouterCmd')">Copy</button>
                 </div>
                 <pre><code id="wgRouterCmd"></code></pre>
-                <div class="panel-meta" style="margin-top: 0.75rem;">
-                  <span class="file-path">Client .conf File</span>
+                <div class="panel-meta" style="margin-top: 0.85rem;">
+                  <span class="file-path">Client .conf Configuration</span>
                   <button class="copy-btn" onclick="copyPlaygroundOutput('wgClientConf')">Copy</button>
                 </div>
                 <pre><code id="wgClientConf"></code></pre>
@@ -636,10 +1117,10 @@
         </div>
 
         <!-- 4. Linter Panel -->
-        <div class="playground-panel" id="pg-panel-linter">
+        <div class="tab-panel" id="wb-panel-linter">
           <div class="form-group">
             <label for="linterInput">RouterOS .rsc Script</label>
-            <textarea id="linterInput" class="form-control" placeholder="Paste RouterOS configuration script to inspect for credentials, open resolvers, and syntax errors..."></textarea>
+            <textarea id="linterInput" class="form-control" placeholder="Paste RouterOS configuration script to inspect for credential leaks, open resolvers, inverted filter chains, and deprecated v6 syntax..."></textarea>
           </div>
           <button class="action-btn" onclick="runLinter()" id="btnLinter">Run NetDevOps Audit</button>
 
@@ -650,131 +1131,261 @@
             <div id="linterFindingsList" style="margin-top: 0.5rem;"></div>
           </div>
         </div>
+
+        <!-- 5. 10-Track Template Explorer -->
+        <div class="tab-panel" id="wb-panel-templates">
+          <div class="template-select-bar">
+            <label for="templateTrackSelect" style="font-weight: 600; color: var(--heading);">Select Certification Track:</label>
+            <select id="templateTrackSelect" class="form-control" style="width: auto; min-width: 320px;" onchange="loadSelectedTemplate()">
+              <option value="mtcre">MTCRE &mdash; Policy-Based Routing, Dual-WAN Failover &amp; BGP</option>
+              <option value="mtcswe">MTCSWE &mdash; Hardware VLAN Filtering, RSTP &amp; Loop Protect</option>
+              <option value="mtcse">MTCSE &mdash; 7-Pillar Firewall Hardening &amp; Raw SYN Drops</option>
+              <option value="mtctce">MTCTCE &mdash; CAKE SQM Bufferbloat Shaping &amp; Prioritization</option>
+              <option value="mtcine">MTCINE &mdash; BGP Multi-Homing &amp; MPLS / VPLS Core</option>
+              <option value="mtcipv6e">MTCIPv6E &mdash; SLAAC, DHCPv6-PD &amp; IPv6 Firewall Filter</option>
+              <option value="mtcume">MTCUME &mdash; User Manager v7 RADIUS &amp; Captive Hotspot</option>
+              <option value="mtcewe">MTCEWE &mdash; WiFiWave2 / CAPsMAN v7 Centralized Wireless</option>
+              <option value="mtcwe">MTCWE &mdash; 802.11ax Band Steering, Fast BSS &amp; Guard Interval</option>
+              <option value="mtcna">MTCNA &mdash; Factory Clean Baseline with Bridge &amp; DHCP</option>
+            </select>
+            <span class="template-badge" id="tplTrackBadge">ROUTEROS V7</span>
+          </div>
+
+          <div class="panel-meta">
+            <span class="file-path" id="tplDescriptionText">Certified configuration script blueprint</span>
+            <button class="copy-btn" onclick="copyPlaygroundOutput('tplScriptContent')">Copy Script</button>
+          </div>
+          <pre><code id="tplScriptContent">Loading template...</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- VIEW 3: API & PROTOCOL DOCUMENTATION                             -->
+    <!-- ================================================================= -->
+    <section class="view-panel" id="view-docs">
+      <div class="section-head">
+        <h2 class="section-title">Model Context Protocol (MCP) Tools Reference</h2>
+        <p class="section-sub">Standardized tools exposed by MikroTik-Skill for LLMs, autonomous coding agents, and IDE extensions.</p>
       </div>
 
-      <h2>Available MCP Tools</h2>
-      <p class="section-intro">Callable by connected AI clients via standard MCP tool calls.</p>
+      <div class="table-card">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 25%;">Tool Name</th>
+              <th style="width: 15%;">Environment</th>
+              <th>Description &amp; Capabilities</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>mikrotik_generate_template</code></td>
+              <td><span class="diagram-badge cloud">Air-Gapped</span></td>
+              <td class="desc">Generates production configuration scripts across all 10 certification tracks (MTCNA to MTCWE) with vendor-neutral naming.</td>
+            </tr>
+            <tr>
+              <td><code>mikrotik_calculate_pcc</code></td>
+              <td><span class="diagram-badge cloud">Air-Gapped</span></td>
+              <td class="desc">Calculates normalized asymmetric N-WAN PCC load balancing ratios with strict bypass priority ordering.</td>
+            </tr>
+            <tr>
+              <td><code>mikrotik_provision_wireguard</code></td>
+              <td><span class="diagram-badge cloud">Air-Gapped</span></td>
+              <td class="desc">Generates Curve25519 Road-Warrior keypairs, client <code>.conf</code>, router CLI commands, and QR code DataURLs.</td>
+            </tr>
+            <tr>
+              <td><code>mikrotik_lint_config</code></td>
+              <td><span class="diagram-badge cloud">Air-Gapped</span></td>
+              <td class="desc">Static security audit and credential leak detection on RouterOS v7 <code>.rsc</code> scripts without executing code.</td>
+            </tr>
+            <tr>
+              <td><code>mikrotik_migrate_filter</code></td>
+              <td><span class="diagram-badge cloud">Air-Gapped</span></td>
+              <td class="desc">Transpiles legacy RouterOS v6 routing filter rules to modern RouterOS v7 rule engine syntax (<code>if ... then</code>).</td>
+            </tr>
+            <tr>
+              <td><code>mikrotik_sanitize_config</code></td>
+              <td><span class="diagram-badge cloud">Air-Gapped</span></td>
+              <td class="desc">Masks MAC addresses, serial numbers, passwords, and VPN tokens from raw scripts or exports.</td>
+            </tr>
+            <tr>
+              <td><code>mikrotik_validate_routing_mark</code></td>
+              <td><span class="diagram-badge cloud">Air-Gapped</span></td>
+              <td class="desc">Verifies that proposed routing tables exist in <code>/routing table</code> with <code>fib=yes</code> before Mangle injection.</td>
+            </tr>
+            <tr>
+              <td><code>mikrotik_get_chat_prompt</code></td>
+              <td><span class="diagram-badge cloud">Air-Gapped</span></td>
+              <td class="desc">Exports certified RouterOS Senior Network Engineer prompt guidelines tailored for ChatGPT or Claude.</td>
+            </tr>
+            <tr>
+              <td><code>mikrotik_list_devices</code></td>
+              <td><span class="diagram-badge local">Fleet Local</span></td>
+              <td class="desc">Enumerates all managed routers defined in <code>inventory.yml</code>, saved profiles, or environment variables.</td>
+            </tr>
+            <tr>
+              <td><code>mikrotik_get_logs</code></td>
+              <td><span class="diagram-badge local">Router Live</span></td>
+              <td class="desc">Queries live system, firewall, DHCP, and VPN logs with topic filtering and entry limits.</td>
+            </tr>
+            <tr>
+              <td><code>mikrotik_manage_poe</code></td>
+              <td><span class="diagram-badge local">Router Live</span></td>
+              <td class="desc">Inspects PoE port status, voltage, and power consumption, or power-cycles downstream APs and cameras.</td>
+            </tr>
+            <tr>
+              <td><code>mikrotik_manage_queues</code></td>
+              <td><span class="diagram-badge local">Router Live</span></td>
+              <td class="desc">Inspects Simple Queues or deploys low-latency CAKE SQM queue types to resolve bufferbloat.</td>
+            </tr>
+            <tr>
+              <td><code>mikrotik_get_wireless_clients</code></td>
+              <td><span class="diagram-badge local">Router Live</span></td>
+              <td class="desc">Lists connected WiFi clients across RouterOS v7 wifiwave2/wifi or legacy wireless registration tables.</td>
+            </tr>
+            <tr>
+              <td><code>mikrotik_test_connection</code></td>
+              <td><span class="diagram-badge local">Router Live</span></td>
+              <td class="desc">Validates router reachability, latency, and transport fallback (REST API vs Native API Port 8728).</td>
+            </tr>
+            <tr>
+              <td><code>mikrotik_audit_security</code></td>
+              <td><span class="diagram-badge local">Router Live</span></td>
+              <td class="desc">Runs automated 7-Pillar Security Audit (DNS open resolver, sensitive ports, NTP drift, Hairpin NAT Mangle).</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
-      <table>
-        <thead>
-          <tr>
-            <th>Tool Name</th>
-            <th>Description</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><code>mikrotik_generate_template</code></td>
-            <td class="desc">Generates production configuration scripts for 10 certification tracks (MTCRE, MTCSE, MTCSWE, MTCUME, MTCEWE, MTCIPv6E, MTCTCE, MTCNA, WireGuard, AdList).</td>
-          </tr>
-          <tr>
-            <td><code>mikrotik_calculate_pcc</code></td>
-            <td class="desc">Calculates mathematically normalized N-WAN asymmetric PCC load balancing rules and RouterOS v7 scripts with GCD stream distribution.</td>
-          </tr>
-          <tr>
-            <td><code>mikrotik_provision_wireguard</code></td>
-            <td class="desc">Provisions Curve25519 Road-Warrior WireGuard peer keys, client .conf, RouterOS v7 CLI commands, and QR codes offline.</td>
-          </tr>
-          <tr>
-            <td><code>mikrotik_migrate_filter</code></td>
-            <td class="desc">Transpiles legacy RouterOS v6 routing filter rules to modern RouterOS v7 rule engine syntax (<code>if ... then</code>).</td>
-          </tr>
-          <tr>
-            <td><code>mikrotik_lint_config</code></td>
-            <td class="desc">Performs static security audit and credential leak detection on RouterOS v7 .rsc scripts completely offline.</td>
-          </tr>
-          <tr>
-            <td><code>mikrotik_sanitize_config</code></td>
-            <td class="desc">Redacts MAC addresses, serial numbers, passwords, and VPN preshared keys from raw configuration text.</td>
-          </tr>
-          <tr>
-            <td><code>mikrotik_validate_routing_mark</code></td>
-            <td class="desc">Verifies custom routing table declaration and kernel FIB compliance (<code>fib=yes</code>) before Mangle rule injection.</td>
-          </tr>
-          <tr>
-            <td><code>mikrotik_get_chat_prompt</code></td>
-            <td class="desc">Provides RouterOS v7 system guidelines enforcing non-deprecated syntax and 1-click CLI script blocks.</td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="section-head">
+        <h2 class="section-title">REST API &amp; Protocol Endpoints</h2>
+        <p class="section-sub">Zero-credential HTTP endpoints callable via standard HTTP clients or curl.</p>
+      </div>
 
-      <h2>Endpoints &amp; Documentation</h2>
-      <p class="section-intro">Machine-readable specifications and REST references.</p>
+      <div class="table-card">
+        <table>
+          <thead>
+            <tr>
+              <th>Endpoint</th>
+              <th>Method</th>
+              <th>Description</th>
+              <th>Example Request</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><a href="/sse" class="doc-link">/sse</a></td>
+              <td><code>GET</code></td>
+              <td>MCP Server-Sent Events stream for AI agents</td>
+              <td><code>curl -N https://mikrotik-skill.vercel.app/sse</code></td>
+            </tr>
+            <tr>
+              <td><a href="/openapi.json" class="doc-link">/openapi.json</a></td>
+              <td><code>GET</code></td>
+              <td>OpenAPI 3.1.0 schema for ChatGPT Actions</td>
+              <td><code>curl https://mikrotik-skill.vercel.app/openapi.json</code></td>
+            </tr>
+            <tr>
+              <td><a href="/api/v1/knowledge/tracks" class="doc-link">/api/v1/knowledge/tracks</a></td>
+              <td><code>GET</code></td>
+              <td>List all 10 MikroTik Certification track blueprints</td>
+              <td><code>curl https://mikrotik-skill.vercel.app/api/v1/knowledge/tracks</code></td>
+            </tr>
+            <tr>
+              <td><a href="/api/v1/knowledge/template?track=mtcre" class="doc-link">/api/v1/knowledge/template</a></td>
+              <td><code>GET</code></td>
+              <td>Fetch specific track script (e.g. <code>?track=mtcre</code>)</td>
+              <td><code>curl "https://mikrotik-skill.vercel.app/api/v1/knowledge/template?track=mtcse"</code></td>
+            </tr>
+            <tr>
+              <td><a href="/api/v1/knowledge/pcc" class="doc-link">/api/v1/knowledge/pcc</a></td>
+              <td><code>POST</code></td>
+              <td>Calculate asymmetric multi-WAN PCC script</td>
+              <td><code>curl -X POST https://mikrotik-skill.vercel.app/api/v1/knowledge/pcc -d '{"wans":[{"name":"ISP1","weight":2},{"name":"ISP2","weight":1}]}' -H 'Content-Type: application/json'</code></td>
+            </tr>
+            <tr>
+              <td><a href="/api/v1/knowledge/wireguard" class="doc-link">/api/v1/knowledge/wireguard</a></td>
+              <td><code>POST</code></td>
+              <td>Provision Road-Warrior WireGuard peer &amp; QR</td>
+              <td><code>curl -X POST https://mikrotik-skill.vercel.app/api/v1/knowledge/wireguard -d '{"clientName":"alice","clientIp":"10.10.0.2/24","serverEndpoint":"vpn.example.com:13231","serverPublicKey":"..."}' -H 'Content-Type: application/json'</code></td>
+            </tr>
+            <tr>
+              <td><a href="/api/v1/knowledge/lint" class="doc-link">/api/v1/knowledge/lint</a></td>
+              <td><code>POST</code></td>
+              <td>Audit RouterOS .rsc script for vulnerabilities</td>
+              <td><code>curl -X POST https://mikrotik-skill.vercel.app/api/v1/knowledge/lint -d '{"script":"/user add name=admin password=123"}' -H 'Content-Type: application/json'</code></td>
+            </tr>
+            <tr>
+              <td><a href="/api/v1/knowledge/sanitize" class="doc-link">/api/v1/knowledge/sanitize</a></td>
+              <td><code>POST</code></td>
+              <td>Redact credentials and identifiers offline</td>
+              <td><code>curl -X POST https://mikrotik-skill.vercel.app/api/v1/knowledge/sanitize -d '{"configText":"mac-address=00:11:22:33:44:55"}' -H 'Content-Type: application/json'</code></td>
+            </tr>
+            <tr>
+              <td><a href="/llms.txt" class="doc-link">/llms.txt</a></td>
+              <td><code>GET</code></td>
+              <td>Curated LLM crawler index &amp; documentation sitemap</td>
+              <td><code>curl https://mikrotik-skill.vercel.app/llms.txt</code></td>
+            </tr>
+            <tr>
+              <td><a href="/llms-full.txt" class="doc-link">/llms-full.txt</a></td>
+              <td><code>GET</code></td>
+              <td>Complete technical knowledge base and all 10 scripts</td>
+              <td><code>curl https://mikrotik-skill.vercel.app/llms-full.txt</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
 
-      <table>
-        <thead>
-          <tr>
-            <th>Endpoint</th>
-            <th>Type</th>
-            <th>Description</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><a href="/sse" class="doc-link">/sse</a></td>
-            <td>SSE</td>
-            <td>Model Context Protocol Server-Sent Events stream</td>
-          </tr>
-          <tr>
-            <td><a href="/openapi.json" class="doc-link">/openapi.json</a></td>
-            <td>JSON</td>
-            <td>OpenAPI 3.1.0 specification for ChatGPT Actions</td>
-          </tr>
-          <tr>
-            <td><a href="/llms.txt" class="doc-link">/llms.txt</a></td>
-            <td>Text</td>
-            <td>Structured LLM summary for AI search crawlers</td>
-          </tr>
-          <tr>
-            <td><a href="/llms-full.txt" class="doc-link">/llms-full.txt</a></td>
-            <td>Text</td>
-            <td>Complete technical dossier and 10-track CLI configuration scripts</td>
-          </tr>
-          <tr>
-            <td><a href="/api/v1/knowledge/pcc" class="doc-link">/api/v1/knowledge/pcc</a></td>
-            <td>POST</td>
-            <td>Asymmetric PCC load balancing calculator</td>
-          </tr>
-          <tr>
-            <td><a href="/api/v1/knowledge/wireguard" class="doc-link">/api/v1/knowledge/wireguard</a></td>
-            <td>POST</td>
-            <td>Road-Warrior WireGuard peer &amp; QR provisioner</td>
-          </tr>
-          <tr>
-            <td><a href="/api/v1/knowledge/migrate-filter" class="doc-link">/api/v1/knowledge/migrate-filter</a></td>
-            <td>POST</td>
-            <td>RouterOS v6 to v7 routing filter transpiler</td>
-          </tr>
-          <tr>
-            <td><a href="/api/v1/knowledge/lint" class="doc-link">/api/v1/knowledge/lint</a></td>
-            <td>POST</td>
-            <td>NetDevOps script linter &amp; credential leak detector</td>
-          </tr>
-          <tr>
-            <td><a href="/api/v1/knowledge/tracks" class="doc-link">/api/v1/knowledge/tracks</a></td>
-            <td>GET</td>
-            <td>List of all 10 MikroTik Certification track blueprints</td>
-          </tr>
-          <tr>
-            <td><a href="/health" class="doc-link">/health</a></td>
-            <td>GET</td>
-            <td>Service liveness check</td>
-          </tr>
-        </tbody>
-      </table>
-    </main>
+  </main>
 
-    <footer>
-      <div>MikroTik-Skill &bull; RouterOS v7 Automation &bull; GPL-3.0-or-later</div>
-      <div>
-        <a href="https://github.com/ardianryan/MikroTik-Skill" target="_blank" rel="noopener noreferrer">GitHub</a> &bull;
-        <a href="/llms.txt">llms.txt</a> &bull;
+  <!-- Footer -->
+  <footer>
+    <div class="footer-container">
+      <div>MikroTik-Skill &bull; RouterOS v7 Production Automation &bull; Licensed under GPL-3.0-or-later</div>
+      <div class="footer-links">
+        <a href="https://github.com/ardianryan/MikroTik-Skill" target="_blank" rel="noopener noreferrer">GitHub Repository</a>
+        <a href="/llms.txt">llms.txt</a>
+        <a href="/llms-full.txt">llms-full.txt</a>
+        <a href="/openapi.json">openapi.json</a>
         <a href="/sitemap.xml">sitemap.xml</a>
       </div>
-    </footer>
-  </div>
+    </div>
+  </footer>
 
   <script>
+    /* View Navigation Router (Hash-based) */
+    function switchView(viewName) {
+      const validViews = ['overview', 'tools', 'docs'];
+      const target = validViews.includes(viewName) ? viewName : 'overview';
+
+      document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.nav-tab-btn').forEach(b => b.classList.remove('active'));
+
+      const activePanel = document.getElementById('view-' + target);
+      const activeBtn = document.getElementById('btn-view-' + target);
+      if (activePanel) activePanel.classList.add('active');
+      if (activeBtn) activeBtn.classList.add('active');
+
+      if (window.location.hash !== '#' + target) {
+        history.replaceState(null, '', '#' + target);
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    window.addEventListener('hashchange', () => {
+      const hash = window.location.hash.replace('#', '');
+      if (hash) switchView(hash);
+    });
+
+    const initialHash = window.location.hash.replace('#', '');
+    if (initialHash) {
+      switchView(initialHash);
+    }
+
+    /* IDE Integration Tabs */
     const CONFIGS = {
       cursor: {
         file: ".cursor/mcp.json",
@@ -827,6 +1438,11 @@
         instruction: "In ChatGPT GPT Editor, select 'Configure' > 'Actions' > 'Create new action'. Click 'Import from URL', paste this URL, and set Authentication to 'None'.",
         code: "https://mikrotik-skill.vercel.app/openapi.json"
       },
+      'claude-code': {
+        file: "Terminal Command",
+        instruction: "Run in your terminal to register the remote MCP server in Claude Code CLI.",
+        code: "claude mcp add --transport sse mikrotik https://mikrotik-skill.vercel.app/sse"
+      },
       'claude-web': {
         file: "Claude.ai Project Custom Instructions",
         instruction: "Paste into your Claude.ai Project custom instructions to enforce RouterOS v7 syntax and track template references.",
@@ -836,19 +1452,14 @@ Rules:
 - Mangle hierarchy: Bypass rules (dstnat & LOCAL_BYPASS) at Index 0 -> Client Overrides -> PCC Load Balancing.
 - Use vendor-neutral names: ISP1, ISP2, WAN1, WAN2.
 - Template documentation: https://mikrotik-skill.vercel.app/llms-full.txt`
-      },
-      'claude-code': {
-        file: "Terminal Command",
-        instruction: "Run in your terminal to register the remote MCP server in Claude Code.",
-        code: "claude mcp add --transport sse mikrotik https://mikrotik-skill.vercel.app/sse"
       }
     };
 
-    let activeTab = 'cursor';
+    let activeIdeTab = 'cursor';
 
-    function setTab(key) {
-      activeTab = key;
-      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    function setIdeTab(key) {
+      activeIdeTab = key;
+      document.querySelectorAll('#tab-cursor, #tab-windsurf, #tab-claude-desktop, #tab-vscode, #tab-chatgpt, #tab-claude-code, #tab-claude-web').forEach(btn => btn.classList.remove('active'));
       const btn = document.getElementById('tab-' + key);
       if (btn) btn.classList.add('active');
 
@@ -859,25 +1470,35 @@ Rules:
     }
 
     function copySnippet() {
-      const item = CONFIGS[activeTab];
-      navigator.clipboard.writeText(item.code).then(() => {
-        const btn = document.getElementById('copyBtn');
-        const orig = btn.innerText;
-        btn.innerText = 'Copied';
-        setTimeout(() => { btn.innerText = orig; }, 2000);
+      const item = CONFIGS[activeIdeTab];
+      copySnippetText(item.code, 'copyBtn');
+    }
+
+    function copySnippetText(text, btnId) {
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById(btnId || 'copyBtn');
+        if (btn) {
+          const orig = btn.innerText;
+          btn.innerText = 'Copied!';
+          setTimeout(() => { btn.innerText = orig; }, 2000);
+        }
       });
     }
 
-    setTab('cursor');
+    setIdeTab('cursor');
 
-    /* Playground Logic */
-    function setPlaygroundTab(key) {
-      document.querySelectorAll('#pg-tab-sanitizer, #pg-tab-pcc, #pg-tab-wireguard, #pg-tab-linter').forEach(btn => btn.classList.remove('active'));
-      document.querySelectorAll('.playground-panel').forEach(panel => panel.classList.remove('active'));
-      const btn = document.getElementById('pg-tab-' + key);
-      const panel = document.getElementById('pg-panel-' + key);
+    /* Workbench Tabs */
+    function setWorkbenchTab(key) {
+      document.querySelectorAll('#wb-tab-sanitizer, #wb-tab-pcc, #wb-tab-wireguard, #wb-tab-linter, #wb-tab-templates').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('#wb-panel-sanitizer, #wb-panel-pcc, #wb-panel-wireguard, #wb-panel-linter, #wb-panel-templates').forEach(panel => panel.classList.remove('active'));
+      const btn = document.getElementById('wb-tab-' + key);
+      const panel = document.getElementById('wb-panel-' + key);
       if (btn) btn.classList.add('active');
       if (panel) panel.classList.add('active');
+
+      if (key === 'templates') {
+        loadSelectedTemplate();
+      }
     }
 
     function copyPlaygroundOutput(elemId) {
@@ -888,12 +1509,13 @@ Rules:
         const btn = event?.target;
         if (btn && btn.tagName === 'BUTTON') {
           const orig = btn.innerText;
-          btn.innerText = 'Copied';
+          btn.innerText = 'Copied!';
           setTimeout(() => { btn.innerText = orig; }, 2000);
         }
       });
     }
 
+    /* Sanitizer Logic */
     async function runSanitize() {
       const btn = document.getElementById('btnSanitize');
       const input = document.getElementById('sanitizerInput').value.trim();
@@ -917,6 +1539,7 @@ Rules:
       }
     }
 
+    /* PCC Calculator Logic */
     async function runPcc() {
       const btn = document.getElementById('btnPcc');
       const rawWans = document.getElementById('pccWans').value.trim();
@@ -934,7 +1557,7 @@ Rules:
       }
 
       btn.disabled = true;
-      btn.innerText = 'Calculating...';
+      btn.innerText = 'Calculating Streams...';
       try {
         const res = await fetch('/api/v1/knowledge/pcc', {
           method: 'POST',
@@ -949,10 +1572,11 @@ Rules:
         alert('PCC calculation failed: ' + err.message);
       } finally {
         btn.disabled = false;
-        btn.innerText = 'Generate v7 PCC Script';
+        btn.innerText = 'Generate RouterOS v7 Script';
       }
     }
 
+    /* WireGuard Logic */
     async function runWireGuard() {
       const btn = document.getElementById('btnWg');
       const clientName = document.getElementById('wgClientName').value.trim();
@@ -986,13 +1610,14 @@ Rules:
       }
     }
 
+    /* NetDevOps Linter Logic */
     async function runLinter() {
       const btn = document.getElementById('btnLinter');
       const script = document.getElementById('linterInput').value.trim();
       if (!script) return;
 
       btn.disabled = true;
-      btn.innerText = 'Auditing...';
+      btn.innerText = 'Auditing Script...';
       try {
         const res = await fetch('/api/v1/knowledge/lint', {
           method: 'POST',
@@ -1019,13 +1644,13 @@ Rules:
                 <span class="lint-badge ${f.severity === 'CRITICAL' ? 'badge-crit' : f.severity === 'HIGH' ? 'badge-high' : 'badge-warn'}">Line ${f.line} &bull; ${f.severity}</span>
               </div>
               <p style="font-size:0.85rem; color:var(--text); margin-bottom:0.35rem;">${f.message}</p>
-              <div style="font-family:var(--font-mono); font-size:0.8rem; color:var(--muted); background:#07090d; padding:0.4rem 0.6rem; border-radius:4px; margin-bottom:0.35rem;">${f.rawLine.trim()}</div>
-              <div style="font-size:0.82rem; color:var(--blue);"><strong>Fix:</strong> <code>${f.remediation}</code></div>
+              <div style="font-family:var(--font-mono); font-size:0.8rem; color:var(--muted); background:#05070a; padding:0.4rem 0.6rem; border-radius:4px; margin-bottom:0.35rem;">${f.rawLine.trim()}</div>
+              <div style="font-size:0.82rem; color:var(--accent);"><strong>Remediation:</strong> <code>${f.remediation}</code></div>
             `;
             list.appendChild(card);
           });
         } else {
-          list.innerHTML = '<p style="font-size:0.85rem; color:var(--green);">✔ Script adheres to RouterOS v7 security best practices.</p>';
+          list.innerHTML = '<p style="font-size:0.88rem; color:var(--green);">✔ Script strictly adheres to RouterOS v7 security and architecture best practices.</p>';
         }
 
         document.getElementById('linterResultSection').style.display = 'block';
@@ -1034,6 +1659,31 @@ Rules:
       } finally {
         btn.disabled = false;
         btn.innerText = 'Run NetDevOps Audit';
+      }
+    }
+
+    /* Template Explorer Logic */
+    async function loadSelectedTemplate() {
+      const select = document.getElementById('templateTrackSelect');
+      const track = select.value;
+      const scriptEl = document.getElementById('tplScriptContent');
+      const descEl = document.getElementById('tplDescriptionText');
+      const badgeEl = document.getElementById('tplTrackBadge');
+      
+      badgeEl.innerText = track.toUpperCase();
+      scriptEl.innerText = 'Loading certified template...';
+
+      try {
+        const res = await fetch(`/api/v1/knowledge/template?track=${encodeURIComponent(track)}`);
+        const data = await res.json();
+        if (data.script) {
+          descEl.innerText = data.title + ' — ' + data.description;
+          scriptEl.innerText = data.script;
+        } else {
+          scriptEl.innerText = 'Failed to load template.';
+        }
+      } catch (err) {
+        scriptEl.innerText = 'Error loading template: ' + err.message;
       }
     }
   </script>

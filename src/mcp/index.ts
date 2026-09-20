@@ -5,7 +5,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { loadRouterConfig } from '../config/profile.js';
+import { getDeviceConfig, listAllDevices } from '../config/profile.js';
 import { ConnectionManager } from '../client/connection-manager.js';
 import { SecurityAuditor } from '../safety/auditor.js';
 import { MangleOrderEngine } from '../safety/order-engine.js';
@@ -248,13 +248,115 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ['script'],
         },
       },
+      {
+        name: 'mikrotik_list_devices',
+        description: 'List all managed MikroTik routers from inventory.yml, saved CLI profiles, or active environment.',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+        },
+      },
+      {
+        name: 'mikrotik_get_logs',
+        description: 'Inspect live system and firewall logs with optional topic filtering and entry limit.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            topics: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Filter logs matching topics (e.g. ["firewall", "warning", "system", "dhcp", "wireguard"])',
+            },
+            limit: {
+              type: 'number',
+              description: 'Maximum number of log entries to retrieve (default: 50)',
+            },
+            targetDevice: {
+              type: 'string',
+              description: 'Target device name from inventory.yml (defaults to primary router)',
+            },
+          },
+        },
+      },
+      {
+        name: 'mikrotik_manage_poe',
+        description: 'Inspect PoE status on ethernet ports or power-cycle a PoE-powered downstream device (AP, camera, VoIP phone).',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            action: {
+              type: 'string',
+              enum: ['status', 'power-cycle'],
+              description: 'Action to perform: "status" to view PoE metrics, or "power-cycle" to reboot port',
+            },
+            interface: {
+              type: 'string',
+              description: 'Ethernet interface name for power-cycle (e.g. ether2)',
+            },
+            targetDevice: {
+              type: 'string',
+              description: 'Target device name from inventory.yml (defaults to primary router)',
+            },
+          },
+          required: ['action'],
+        },
+      },
+      {
+        name: 'mikrotik_manage_queues',
+        description: 'Inspect Simple Queues or provision low-latency CAKE SQM queue type with bandwidth shaping to eliminate bufferbloat.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            action: {
+              type: 'string',
+              enum: ['list', 'create-cake'],
+              description: 'Action to perform: "list" queues or "create-cake" SQM queue',
+            },
+            name: {
+              type: 'string',
+              description: 'Queue name (required for create-cake)',
+            },
+            target: {
+              type: 'string',
+              description: 'Target IP subnet or interface (e.g. 192.168.88.0/24)',
+            },
+            upload: {
+              type: 'string',
+              description: 'Max upload bandwidth rate (e.g. 50M)',
+            },
+            download: {
+              type: 'string',
+              description: 'Max download bandwidth rate (e.g. 100M)',
+            },
+            targetDevice: {
+              type: 'string',
+              description: 'Target device name from inventory.yml (defaults to primary router)',
+            },
+          },
+          required: ['action'],
+        },
+      },
+      {
+        name: 'mikrotik_get_wireless_clients',
+        description: 'List connected WiFi clients across RouterOS v7 wifiwave2/wifi or legacy wireless registration tables with signal/tx-rate diagnostics.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            targetDevice: {
+              type: 'string',
+              description: 'Target device name from inventory.yml (defaults to primary router)',
+            },
+          },
+        },
+      },
     ],
   };
 });
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
-  const config = loadRouterConfig();
+  const targetDevice = args?.targetDevice ? String(args.targetDevice) : undefined;
+  const config = getDeviceConfig(targetDevice);
   const conn = new ConnectionManager(config);
 
   try {
@@ -561,6 +663,65 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const result = RouterOsLinter.lint(script);
         return {
           content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case 'mikrotik_list_devices': {
+        const devices = listAllDevices();
+        return {
+          content: [{ type: 'text', text: JSON.stringify(devices, null, 2) }],
+        };
+      }
+
+      case 'mikrotik_get_logs': {
+        const limit = typeof args?.limit === 'number' ? args.limit : undefined;
+        const topics = Array.isArray(args?.topics) ? (args.topics as string[]).map(String) : undefined;
+        const logs = await conn.getLogs({ limit, topics });
+        return {
+          content: [{ type: 'text', text: JSON.stringify(logs, null, 2) }],
+        };
+      }
+
+      case 'mikrotik_manage_poe': {
+        const action = String(args?.action || 'status');
+        if (action === 'power-cycle') {
+          const iface = String(args?.interface || '');
+          if (!iface) throw new Error('Parameter "interface" is required for power-cycle action.');
+          const res = await conn.cyclePoePower(iface);
+          return {
+            content: [{ type: 'text', text: JSON.stringify(res || { status: `Power cycled PoE on ${iface}` }, null, 2) }],
+          };
+        } else {
+          const poe = await conn.getPoeStatus();
+          return {
+            content: [{ type: 'text', text: JSON.stringify(poe, null, 2) }],
+          };
+        }
+      }
+
+      case 'mikrotik_manage_queues': {
+        const action = String(args?.action || 'list');
+        if (action === 'create-cake') {
+          const queueName = String(args?.name || 'sqm-cake');
+          const target = String(args?.target || '0.0.0.0/0');
+          const upload = String(args?.upload || '50M');
+          const download = String(args?.download || '100M');
+          const res = await conn.createCakeQueue({ name: queueName, target, upload, download });
+          return {
+            content: [{ type: 'text', text: JSON.stringify(res || { status: `Created CAKE SQM queue ${queueName} (${upload}/${download})` }, null, 2) }],
+          };
+        } else {
+          const queues = await conn.getQueues();
+          return {
+            content: [{ type: 'text', text: JSON.stringify(queues, null, 2) }],
+          };
+        }
+      }
+
+      case 'mikrotik_get_wireless_clients': {
+        const clients = await conn.getWirelessClients();
+        return {
+          content: [{ type: 'text', text: JSON.stringify(clients, null, 2) }],
         };
       }
 

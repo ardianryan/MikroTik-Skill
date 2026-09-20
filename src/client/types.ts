@@ -183,3 +183,42 @@ export interface AuditReport {
   overallScore: 'SECURE' | 'NEEDS_ATTENTION' | 'VULNERABLE';
   items: AuditItem[];
 }
+
+export interface LogItem {
+  '.id'?: string;
+  time?: string;
+  topics?: string;
+  message: string;
+}
+
+export interface PoeItem {
+  '.id'?: string;
+  name?: string;
+  'poe-out'?: string;
+  'poe-out-status'?: string;
+  'poe-voltage'?: string;
+  'poe-current'?: string | number;
+  'poe-power'?: string | number;
+  status?: string;
+}
+
+export interface QueueItem {
+  '.id'?: string;
+  name: string;
+  target?: string;
+  'max-limit'?: string;
+  'queue'?: string;
+  disabled?: boolean | string;
+}
+
+export interface WirelessClientItem {
+  '.id'?: string;
+  interface?: string;
+  'mac-address'?: string;
+  'signal-strength'?: string | number;
+  'signal-to-noise'?: string | number;
+  'tx-rate'?: string;
+  'rx-rate'?: string;
+  uptime?: string;
+  comment?: string;
+}

@@ -12,7 +12,7 @@ import { WireGuardProvisioner } from '../safety/wireguard.js';
 import { RoutingMigrator } from '../safety/routing-migrator.js';
 import { RouterOsLinter } from '../safety/linter.js';
 import { ConnectionManager } from '../client/connection-manager.js';
-import { loadRouterConfig } from '../config/profile.js';
+import { getDeviceConfig, listAllDevices } from '../config/profile.js';
 import { SecurityAuditor } from '../safety/auditor.js';
 
 export function createRemoteMcpServer(): Server {
@@ -178,6 +178,69 @@ export function createRemoteMcpServer(): Server {
             properties: {},
           },
         },
+        {
+          name: 'mikrotik_list_devices',
+          description: 'List all managed MikroTik routers from inventory or profile configuration.',
+          inputSchema: {
+            type: 'object',
+            properties: {},
+          },
+        },
+        {
+          name: 'mikrotik_get_logs',
+          description: 'Inspect live system and firewall logs with optional topic filtering and entry limit.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              topics: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Filter logs matching topics (e.g. ["firewall", "warning", "system"])',
+              },
+              limit: { type: 'number', description: 'Maximum log entries (default: 50)' },
+              targetDevice: { type: 'string', description: 'Target device from inventory' },
+            },
+          },
+        },
+        {
+          name: 'mikrotik_manage_poe',
+          description: 'Inspect PoE status on ethernet ports or power-cycle a PoE-powered downstream device.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              action: { type: 'string', enum: ['status', 'power-cycle'], description: 'PoE action' },
+              interface: { type: 'string', description: 'Ethernet interface for power-cycle' },
+              targetDevice: { type: 'string', description: 'Target device from inventory' },
+            },
+            required: ['action'],
+          },
+        },
+        {
+          name: 'mikrotik_manage_queues',
+          description: 'Inspect Simple Queues or provision low-latency CAKE SQM queue type with bandwidth shaping.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              action: { type: 'string', enum: ['list', 'create-cake'], description: 'Queue action' },
+              name: { type: 'string', description: 'Queue name' },
+              target: { type: 'string', description: 'Target IP subnet (e.g. 192.168.88.0/24)' },
+              upload: { type: 'string', description: 'Max upload bandwidth rate' },
+              download: { type: 'string', description: 'Max download bandwidth rate' },
+              targetDevice: { type: 'string', description: 'Target device from inventory' },
+            },
+            required: ['action'],
+          },
+        },
+        {
+          name: 'mikrotik_get_wireless_clients',
+          description: 'List connected WiFi clients across RouterOS v7 wifiwave2/wifi or legacy wireless registration tables.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              targetDevice: { type: 'string', description: 'Target device from inventory' },
+            },
+          },
+        },
       ],
     };
   });
@@ -289,8 +352,19 @@ export function createRemoteMcpServer(): Server {
         };
       }
 
+      case 'mikrotik_list_devices': {
+        const devices = listAllDevices();
+        return {
+          content: [{ type: 'text', text: JSON.stringify(devices, null, 2) }],
+        };
+      }
+
       case 'mikrotik_test_connection':
-      case 'mikrotik_audit_security': {
+      case 'mikrotik_audit_security':
+      case 'mikrotik_get_logs':
+      case 'mikrotik_manage_poe':
+      case 'mikrotik_manage_queues':
+      case 'mikrotik_get_wireless_clients': {
         const host = process.env.ROUTEROS_HOST;
         if (!host || host === '192.168.88.1') {
           return {
@@ -312,15 +386,52 @@ export function createRemoteMcpServer(): Server {
         }
 
         try {
-          const cfg = loadRouterConfig();
+          const targetDevice = args?.targetDevice ? String(args.targetDevice) : undefined;
+          const cfg = getDeviceConfig(targetDevice);
           const conn = new ConnectionManager(cfg);
-          if (name === 'mikrotik_test_connection') {
-            const res = await conn.testConnection();
-            return { content: [{ type: 'text', text: JSON.stringify(res, null, 2) }] };
-          } else {
-            const auditor = new SecurityAuditor(conn);
-            const rep = await auditor.runFullAudit();
-            return { content: [{ type: 'text', text: JSON.stringify(rep, null, 2) }] };
+          try {
+            if (name === 'mikrotik_test_connection') {
+              const res = await conn.testConnection();
+              return { content: [{ type: 'text', text: JSON.stringify(res, null, 2) }] };
+            } else if (name === 'mikrotik_audit_security') {
+              const auditor = new SecurityAuditor(conn);
+              const rep = await auditor.runFullAudit();
+              return { content: [{ type: 'text', text: JSON.stringify(rep, null, 2) }] };
+            } else if (name === 'mikrotik_get_logs') {
+              const limit = typeof args?.limit === 'number' ? args.limit : undefined;
+              const topics = Array.isArray(args?.topics) ? (args.topics as string[]).map(String) : undefined;
+              const logs = await conn.getLogs({ limit, topics });
+              return { content: [{ type: 'text', text: JSON.stringify(logs, null, 2) }] };
+            } else if (name === 'mikrotik_manage_poe') {
+              const action = String(args?.action || 'status');
+              if (action === 'power-cycle') {
+                const iface = String(args?.interface || '');
+                const res = await conn.cyclePoePower(iface);
+                return { content: [{ type: 'text', text: JSON.stringify(res || { status: `Power cycled PoE on ${iface}` }, null, 2) }] };
+              } else {
+                const poe = await conn.getPoeStatus();
+                return { content: [{ type: 'text', text: JSON.stringify(poe, null, 2) }] };
+              }
+            } else if (name === 'mikrotik_manage_queues') {
+              const action = String(args?.action || 'list');
+              if (action === 'create-cake') {
+                const queueName = String(args?.name || 'sqm-cake');
+                const target = String(args?.target || '0.0.0.0/0');
+                const upload = String(args?.upload || '50M');
+                const download = String(args?.download || '100M');
+                const res = await conn.createCakeQueue({ name: queueName, target, upload, download });
+                return { content: [{ type: 'text', text: JSON.stringify(res || { status: `Created CAKE queue ${queueName}` }, null, 2) }] };
+              } else {
+                const queues = await conn.getQueues();
+                return { content: [{ type: 'text', text: JSON.stringify(queues, null, 2) }] };
+              }
+            } else if (name === 'mikrotik_get_wireless_clients') {
+              const clients = await conn.getWirelessClients();
+              return { content: [{ type: 'text', text: JSON.stringify(clients, null, 2) }] };
+            }
+            throw new Error(`Unsupported live tool: ${name}`);
+          } finally {
+            await conn.close();
           }
         } catch (err) {
           return {

@@ -131,3 +131,180 @@ export function listProfiles(): { name: string; active: boolean; host: string; u
   }));
 }
 
+export interface InventoryDevice {
+  name: string;
+  host: string;
+  user: string;
+  port: number;
+  transport: 'rest' | 'api';
+  source: 'inventory' | 'profile' | 'env';
+}
+
+function resolveEnvVar(val: string): string {
+  if (val.startsWith('${') && val.endsWith('}')) {
+    const key = val.slice(2, -1);
+    return process.env[key] || '';
+  }
+  if (val.startsWith('$')) {
+    const key = val.slice(1);
+    return process.env[key] || '';
+  }
+  return val;
+}
+
+export function parseYamlInventory(content: string): Record<string, RouterConfig> {
+  const devices: Record<string, RouterConfig> = {};
+  const lines = content.split(/\r?\n/);
+  let currentDevice: Partial<RouterConfig> & { name?: string } | null = null;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+
+    if (trimmed.startsWith('- name:') || trimmed.startsWith('name:')) {
+      if (currentDevice && currentDevice.name && currentDevice.host) {
+        try {
+          devices[currentDevice.name] = loadRouterConfig(currentDevice);
+        } catch {
+          // Skip invalid
+        }
+      }
+      const nameMatch = trimmed.match(/name:\s*["']?([^"'\s]+)["']?/);
+      currentDevice = { name: nameMatch ? nameMatch[1] : undefined };
+      continue;
+    }
+
+    if (!currentDevice) continue;
+
+    const kv = trimmed.match(/^([a-zA-Z0-9_]+):\s*["']?([^"']+)["']?$/);
+    if (kv && kv[1] && kv[2]) {
+      const key = kv[1];
+      const rawVal = resolveEnvVar(kv[2].trim());
+
+      if (key === 'host') currentDevice.host = rawVal;
+      else if (key === 'user') currentDevice.user = rawVal;
+      else if (key === 'password') currentDevice.password = rawVal;
+      else if (key === 'restPort') currentDevice.restPort = parseInt(rawVal, 10);
+      else if (key === 'apiPort') currentDevice.apiPort = parseInt(rawVal, 10);
+      else if (key === 'useSsl') currentDevice.useSsl = rawVal !== 'false';
+      else if (key === 'preferBinary') currentDevice.preferBinary = rawVal === 'true';
+    }
+  }
+
+  if (currentDevice && currentDevice.name && currentDevice.host) {
+    try {
+      devices[currentDevice.name] = loadRouterConfig(currentDevice);
+    } catch {
+      // Skip invalid
+    }
+  }
+
+  return devices;
+}
+
+export function loadInventory(): Record<string, RouterConfig> {
+  const cwd = process.cwd();
+  const candidates = [
+    path.join(cwd, 'inventory.yml'),
+    path.join(cwd, 'inventory.yaml'),
+    path.join(cwd, 'inventory.json'),
+  ];
+
+  for (const file of candidates) {
+    if (fs.existsSync(file)) {
+      try {
+        const raw = fs.readFileSync(file, 'utf-8');
+        if (file.endsWith('.json')) {
+          const parsed = JSON.parse(raw);
+          const devList = Array.isArray(parsed.devices) ? parsed.devices : [];
+          const res: Record<string, RouterConfig> = {};
+          for (const d of devList) {
+            if (d.name && d.host) {
+              res[d.name] = loadRouterConfig(d);
+            }
+          }
+          return res;
+        } else {
+          return parseYamlInventory(raw);
+        }
+      } catch {
+        // Ignore parsing errors
+      }
+    }
+  }
+  return {};
+}
+
+export function getDeviceConfig(deviceName?: string): RouterConfig {
+  if (!deviceName) {
+    const profile = getProfile();
+    return profile || loadRouterConfig();
+  }
+
+  // 1. Check inventory
+  const inventory = loadInventory();
+  if (inventory[deviceName]) {
+    return inventory[deviceName]!;
+  }
+
+  // 2. Check profile store
+  const profile = getProfile(deviceName);
+  if (profile) {
+    return profile;
+  }
+
+  // Fallback to active default
+  return loadRouterConfig();
+}
+
+export function listAllDevices(): InventoryDevice[] {
+  const devices: InventoryDevice[] = [];
+  const seen = new Set<string>();
+
+  // From inventory
+  const inventory = loadInventory();
+  for (const [name, cfg] of Object.entries(inventory)) {
+    devices.push({
+      name,
+      host: cfg.host,
+      user: cfg.user,
+      port: cfg.preferBinary ? cfg.apiPort : cfg.restPort,
+      transport: cfg.preferBinary ? 'api' : 'rest',
+      source: 'inventory',
+    });
+    seen.add(name);
+  }
+
+  // From profiles
+  const profiles = listProfiles();
+  for (const p of profiles) {
+    if (!seen.has(p.name)) {
+      const cfg = getProfile(p.name);
+      devices.push({
+        name: p.name,
+        host: p.host,
+        user: p.user,
+        port: cfg?.preferBinary ? cfg.apiPort : (cfg?.restPort || 443),
+        transport: cfg?.preferBinary ? 'api' : 'rest',
+        source: 'profile',
+      });
+      seen.add(p.name);
+    }
+  }
+
+  // Current default env if empty
+  if (devices.length === 0) {
+    const defaultCfg = loadRouterConfig();
+    devices.push({
+      name: 'default',
+      host: defaultCfg.host,
+      user: defaultCfg.user,
+      port: defaultCfg.preferBinary ? defaultCfg.apiPort : defaultCfg.restPort,
+      transport: defaultCfg.preferBinary ? 'api' : 'rest',
+      source: 'env',
+    });
+  }
+
+  return devices;
+}
+
