@@ -156,13 +156,20 @@ sequenceDiagram
 
 ## Verified Hardware & Compatibility Matrix
 
-This toolkit is continuously validated against physical MikroTik RouterOS v7 hardware across multiple processor architectures (MMIPS, ARM64, and ARM 32-bit):
+This toolkit is continuously validated against physical MikroTik RouterOS v7 hardware across multiple processor architectures (ARM 32-bit, ARM64, and MMIPS):
 
-| Device Model | Part Number / Codename | CPU Architecture | Tested RouterOS Version | Primary Transport | Validation Status |
-| :--- | :--- | :--- | :--- | :--- | :---: |
-| **MikroTik hEX S** | `E60iUGS` (RB760iGS) | MMIPS (MediaTek MT7621A) | **v7.24.4** | REST API & Native API (:8728) | [![Pass](https://img.shields.io/badge/Status-PASS-brightgreen)](https://mikrotik.com) |
-| **MikroTik hEX refresh** | `E50UG` | ARM64 (MediaTek EN7562CT) | **v7.23.7** | REST API & Native API (:8728) | [![Pass](https://img.shields.io/badge/Status-PASS-brightgreen)](https://mikrotik.com) |
-| **MikroTik RB1100AHx4** | `RB1100AHx4` | ARM 32-bit (Alpine AL21400) | **v7.23.7** | REST API & Native API (:8728) | [![Pass](https://img.shields.io/badge/Status-PASS-brightgreen)](https://mikrotik.com) |
+| Device Model | Part Number | CPU & Architecture | RAM / Flash | Tested RouterOS | Primary Transport | Validation Status |
+| :--- | :--- | :--- | :--- | :--- | :--- | :---: |
+| **MikroTik hEX S (New Refresh)** | `E60iUGS` | **ARM 32-bit** (MediaTek EN7562CT Dual-Core 950 MHz) | 512 MB / 128 MB | **v7.24.4** | REST API & Native API (:8728) | [![Pass](https://img.shields.io/badge/Status-PASS-brightgreen)](https://mikrotik.com) |
+| **MikroTik hEX refresh** | `E50UG` | **ARM 32-bit** (MediaTek EN7562CT Dual-Core 950 MHz) | 512 MB / 128 MB | **v7.23.7** | REST API & Native API (:8728) | [![Pass](https://img.shields.io/badge/Status-PASS-brightgreen)](https://mikrotik.com) |
+| **MikroTik RB1100AHx4** | `RB1100AHx4` | **ARM 32-bit** (Annapurna Alpine AL21400 Quad-Core 1.4 GHz) | 1 GB / 128 MB | **v7.23.7** | REST API & Native API (:8728) | [![Pass](https://img.shields.io/badge/Status-PASS-brightgreen)](https://mikrotik.com) |
+| **MikroTik hEX S (Legacy)** | `RB760iGS` | **MMIPS** (MediaTek MT7621A Dual-Core 880 MHz) | 256 MB / 16 MB | **v7.24.4** | REST API & Native API (:8728) | [![Pass](https://img.shields.io/badge/Status-PASS-brightgreen)](https://mikrotik.com) |
+
+> [!NOTE]
+> **E60iUGS (hEX S 2024–2025) Architecture & Hardware Notes:**
+> - **Firmware Package:** Download packages from the **ARM** category (32-bit), not ARM64.
+> - **Port Topology:** `ether1` (PoE-in) connects directly to the CPU; ports `ether2`–`ether5` connect via the EN7562CT switch chip with full L2 Hardware Offload (`hw=yes`).
+> - **Container Compatibility (`/container`):** When running Docker containers via external USB storage, images must target `linux/arm/v5` (`arm32v5`) instruction sets due to EN7562CT CPU capabilities to avoid `illegal instruction` errors.
 
 ---
 
