@@ -189,6 +189,179 @@ export class OpenApiGenerator {
             },
           },
         },
+        '/api/v1/knowledge/pcc': {
+          post: {
+            operationId: 'calculatePcc',
+            summary: 'Calculate N-WAN asymmetric PCC load balancing configuration for RouterOS v7',
+            description: 'Computes GCD-normalized PCC streams, strict bypass ordering, and complete copy-pasteable RouterOS v7 configuration.',
+            requestBody: {
+              required: true,
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['wans'],
+                    properties: {
+                      wans: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          required: ['name'],
+                          properties: {
+                            name: { type: 'string' },
+                            weight: { type: 'number' },
+                            gateway: { type: 'string' },
+                          },
+                        },
+                      },
+                      lanInterface: { type: 'string' },
+                      classifier: {
+                        type: 'string',
+                        enum: ['both-addresses-and-ports', 'both-addresses', 'src-address', 'dst-address'],
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            responses: {
+              '200': {
+                description: 'PCC calculation and RouterOS v7 script',
+                content: {
+                  'application/json': {
+                    schema: {
+                      type: 'object',
+                      properties: {
+                        totalStreams: { type: 'number' },
+                        streamsPerWan: { type: 'object' },
+                        script: { type: 'string' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        '/api/v1/knowledge/wireguard': {
+          post: {
+            operationId: 'provisionWireGuard',
+            summary: 'Provision Curve25519 Road-Warrior WireGuard peer keys, client .conf, and QR codes',
+            description: 'Generates client Curve25519 keypairs, client .conf with keepalive, RouterOS v7 CLI commands, and web/terminal QR codes offline.',
+            requestBody: {
+              required: true,
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['clientName', 'clientIp', 'serverEndpoint', 'serverPublicKey'],
+                    properties: {
+                      clientName: { type: 'string' },
+                      clientIp: { type: 'string' },
+                      serverEndpoint: { type: 'string' },
+                      serverPublicKey: { type: 'string' },
+                      interfaceName: { type: 'string' },
+                      dns: { type: 'string' },
+                    },
+                  },
+                },
+              },
+            },
+            responses: {
+              '200': {
+                description: 'Provisioned WireGuard peer data',
+                content: {
+                  'application/json': {
+                    schema: {
+                      type: 'object',
+                      properties: {
+                        clientPublicKey: { type: 'string' },
+                        routerPeerCommand: { type: 'string' },
+                        clientConfig: { type: 'string' },
+                        qrDataUrl: { type: 'string' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        '/api/v1/knowledge/migrate-filter': {
+          post: {
+            operationId: 'migrateRoutingFilter',
+            summary: 'Transpile legacy RouterOS v6 routing filters to RouterOS v7 if-then syntax',
+            description: 'Converts legacy v6 /routing filter add prefix/action rules to modern v7 /routing filter rule add rule="if (...) { ... }".',
+            requestBody: {
+              required: true,
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['script'],
+                    properties: {
+                      script: { type: 'string', description: 'Legacy RouterOS v6 filter script' },
+                    },
+                  },
+                },
+              },
+            },
+            responses: {
+              '200': {
+                description: 'Transpiled RouterOS v7 filter rules',
+                content: {
+                  'application/json': {
+                    schema: {
+                      type: 'object',
+                      properties: {
+                        convertedRules: { type: 'array', items: { type: 'string' } },
+                        v7Script: { type: 'string' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        '/api/v1/knowledge/lint': {
+          post: {
+            operationId: 'lintConfiguration',
+            summary: 'Static security audit and credential leak detection for RouterOS .rsc scripts',
+            description: 'Checks scripts for cleartext passwords, exposed keys, DNS open resolvers, deprecated syntax, and missing FIB routing tables.',
+            requestBody: {
+              required: true,
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['script'],
+                    properties: {
+                      script: { type: 'string', description: 'RouterOS .rsc script content' },
+                    },
+                  },
+                },
+              },
+            },
+            responses: {
+              '200': {
+                description: 'Lint findings and pass/fail summary',
+                content: {
+                  'application/json': {
+                    schema: {
+                      type: 'object',
+                      properties: {
+                        passed: { type: 'boolean' },
+                        findings: { type: 'array' },
+                        summary: { type: 'object' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     };
   }

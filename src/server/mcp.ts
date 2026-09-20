@@ -7,6 +7,10 @@ import { CertifiedTemplateGenerator, type CertificationTrack } from '../safety/t
 import { ChatPromptExporter } from '../safety/prompt-export.js';
 import { ConfigSanitizer } from '../safety/sanitizer.js';
 import { MangleOrderEngine } from '../safety/order-engine.js';
+import { PccCalculator } from '../safety/pcc-calculator.js';
+import { WireGuardProvisioner } from '../safety/wireguard.js';
+import { RoutingMigrator } from '../safety/routing-migrator.js';
+import { RouterOsLinter } from '../safety/linter.js';
 import { ConnectionManager } from '../client/connection-manager.js';
 import { loadRouterConfig } from '../config/profile.js';
 import { SecurityAuditor } from '../safety/auditor.js';
@@ -88,6 +92,77 @@ export function createRemoteMcpServer(): Server {
           },
         },
         {
+          name: 'mikrotik_calculate_pcc',
+          description:
+            'Calculate mathematically normalized N-WAN asymmetric PCC load balancing configuration for RouterOS v7.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              wans: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string' },
+                    weight: { type: 'number' },
+                    gateway: { type: 'string' },
+                  },
+                  required: ['name'],
+                },
+                description: 'Array of WAN interfaces with optional weight and gateway',
+              },
+              lanInterface: { type: 'string', description: 'LAN interface name (default: bridge-lan)' },
+              classifier: {
+                type: 'string',
+                enum: ['both-addresses-and-ports', 'both-addresses', 'src-address', 'dst-address'],
+                description: 'PCC matcher classifier',
+              },
+            },
+            required: ['wans'],
+          },
+        },
+        {
+          name: 'mikrotik_provision_wireguard',
+          description:
+            'Generate Curve25519 Road-Warrior WireGuard peer keys, client .conf, router CLI commands, and QR code DataURLs offline.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              clientName: { type: 'string', description: 'Client identifier (e.g. laptop-alice)' },
+              clientIp: { type: 'string', description: 'Client VPN IP with CIDR (e.g. 10.10.0.2/24)' },
+              serverEndpoint: { type: 'string', description: 'Router public IP/hostname and port (e.g. vpn.example.com:13231)' },
+              serverPublicKey: { type: 'string', description: 'Router WireGuard public key' },
+              interfaceName: { type: 'string', description: 'WireGuard interface name on router (default: wg0)' },
+              dns: { type: 'string', description: 'DNS server for client (default: 10.10.0.1)' },
+            },
+            required: ['clientName', 'clientIp', 'serverEndpoint', 'serverPublicKey'],
+          },
+        },
+        {
+          name: 'mikrotik_migrate_filter',
+          description:
+            'Transpile legacy RouterOS v6 routing filter rules to modern RouterOS v7 rule engine syntax (if ... then).',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              script: { type: 'string', description: 'Legacy RouterOS v6 /routing filter add commands' },
+            },
+            required: ['script'],
+          },
+        },
+        {
+          name: 'mikrotik_lint_config',
+          description:
+            'Perform static security audit and credential leak detection on RouterOS v7 .rsc scripts completely offline.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              script: { type: 'string', description: 'RouterOS .rsc script content to inspect' },
+            },
+            required: ['script'],
+          },
+        },
+        {
           name: 'mikrotik_test_connection',
           description: 'Verify connectivity to MikroTik RouterOS v7 (requires router reachable from runtime).',
           inputSchema: {
@@ -155,6 +230,60 @@ export function createRemoteMcpServer(): Server {
           ? (args.existingTables as string[]).map((t) => ({ name: String(t), fib: true }))
           : [{ name: mark, fib: true }];
         const result = MangleOrderEngine.validateRoutingMark(mark, existing);
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case 'mikrotik_calculate_pcc': {
+        const wans = args?.wans as any;
+        if (!wans || !Array.isArray(wans) || wans.length < 2) {
+          throw new Error('Parameter "wans" must be an array of at least 2 WAN interface configs.');
+        }
+        const lanInterface = args?.lanInterface ? String(args.lanInterface) : undefined;
+        const classifier = args?.classifier as any;
+        const result = PccCalculator.calculate({ wans, lanInterface, classifier });
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case 'mikrotik_provision_wireguard': {
+        const clientName = String(args?.clientName || '');
+        const clientIp = String(args?.clientIp || '');
+        const serverEndpoint = String(args?.serverEndpoint || '');
+        const serverPublicKey = String(args?.serverPublicKey || '');
+        if (!clientName || !clientIp || !serverEndpoint || !serverPublicKey) {
+          throw new Error('Parameters "clientName", "clientIp", "serverEndpoint", and "serverPublicKey" are required.');
+        }
+        const interfaceName = args?.interfaceName ? String(args.interfaceName) : undefined;
+        const dns = args?.dns ? String(args.dns) : undefined;
+        const result = await WireGuardProvisioner.provisionClient({
+          clientName,
+          clientIp,
+          serverEndpoint,
+          serverPublicKey,
+          interfaceName,
+          dns,
+        });
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case 'mikrotik_migrate_filter': {
+        const script = String(args?.script || '');
+        if (!script) throw new Error('Parameter "script" is required.');
+        const result = RoutingMigrator.migrateScript(script);
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case 'mikrotik_lint_config': {
+        const script = String(args?.script || '');
+        if (!script) throw new Error('Parameter "script" is required.');
+        const result = RouterOsLinter.lint(script);
         return {
           content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
         };

@@ -19,6 +19,10 @@ import { formatBatchDiff, type DiffEntry } from '../safety/diff.js';
 import { McpInstaller, type IdeTarget } from '../mcp/installer.js';
 import { CertifiedTemplateGenerator } from '../safety/templates.js';
 import { ChatPromptExporter } from '../safety/prompt-export.js';
+import { PccCalculator } from '../safety/pcc-calculator.js';
+import { WireGuardProvisioner } from '../safety/wireguard.js';
+import { RoutingMigrator } from '../safety/routing-migrator.js';
+import { RouterOsLinter } from '../safety/linter.js';
 import { MikroTikHttpServer } from '../server/http.js';
 import { OpenApiGenerator } from '../server/openapi.js';
 import type { InterfaceTrafficMonitor } from '../client/types.js';
@@ -717,6 +721,165 @@ program
       console.log(chalk.green(`\n✔ OpenAPI schema saved to: ${chalk.bold(outPath)}\n`));
     } else {
       console.log(json);
+    }
+  });
+
+program
+  .command('pcc')
+  .description('Generate mathematically normalized N-WAN asymmetric PCC load balancing configuration for RouterOS v7.')
+  .requiredOption('-w, --wans <specs>', 'Comma-separated WAN specs with weight/bandwidth (e.g. "ISP1=100,ISP2=50" or "ether1=1,ether2=1")')
+  .option('-l, --lan <interface>', 'LAN bridge/interface name', 'bridge-lan')
+  .option('-c, --classifier <type>', 'PCC classifier type: both-addresses | both-addresses-and-ports | src-address | dst-address', 'both-addresses-and-ports')
+  .option('-o, --output <file>', 'Save generated script to a file')
+  .action((opts) => {
+    const wanConfigs = opts.wans.split(',').map((part: string) => {
+      const [name, weightStr] = part.trim().split('=');
+      const weight = parseInt(weightStr || '1', 10) || 1;
+      return {
+        name,
+        weight,
+        gateway: `gateway_${name}`,
+      };
+    });
+
+    const result = PccCalculator.calculate({
+      wans: wanConfigs,
+      lanInterface: opts.lan,
+      classifier: opts.classifier,
+    });
+
+    console.log(chalk.bold(`\n=== Asymmetric PCC Ratio Calculation ===`));
+    console.log(`Total Streams : ${chalk.cyan(result.totalStreams)}`);
+    console.log(`Allocations   :`);
+    for (const [wan, streams] of Object.entries(result.streamsPerWan)) {
+      console.log(`  - ${chalk.bold(wan)} (Streams: ${chalk.green(streams.length)}): ${streams.map((s) => `${result.totalStreams}/${s}`).join(', ')}`);
+    }
+    console.log('');
+
+    if (opts.output) {
+      const outPath = path.resolve(process.cwd(), opts.output);
+      fs.writeFileSync(outPath, result.script, 'utf-8');
+      console.log(chalk.green(`✔ RouterOS v7 script written to: ${outPath}`));
+    } else {
+      console.log(chalk.gray('# RouterOS v7 Script:\n'));
+      console.log(result.script);
+    }
+  });
+
+program
+  .command('wireguard')
+  .description('Provision WireGuard Road-Warrior keypairs, configs, router peer commands, and QR codes.')
+  .argument('[action]', 'Action to perform: client', 'client')
+  .requiredOption('-n, --name <name>', 'Client identity name (e.g. laptop-alice)')
+  .requiredOption('-i, --ip <ip>', 'Client VPN IP address with CIDR (e.g. 10.10.0.2/24)')
+  .requiredOption('-e, --endpoint <endpoint>', 'Router public IP/FQDN and port (e.g. vpn.example.com:13231)')
+  .requiredOption('-k, --server-pubkey <pubkey>', 'Router WireGuard public key (44-char base64)')
+  .option('-w, --interface <name>', 'Router WireGuard interface name', 'wg0')
+  .option('-d, --dns <dns>', 'DNS server pushed to client', '1.1.1.1,8.8.8.8')
+  .option('-q, --qr', 'Display ASCII QR code in terminal for mobile scanning', false)
+  .option('-o, --output <file>', 'Save client .conf file')
+  .action(async (_action, opts) => {
+    const result = await WireGuardProvisioner.provisionClient({
+      clientName: opts.name,
+      clientIp: opts.ip,
+      serverEndpoint: opts.endpoint,
+      serverPublicKey: opts.serverPubkey,
+      interfaceName: opts.interface,
+      dns: opts.dns,
+    });
+
+    console.log(chalk.bold(`\n=== WireGuard Peer Provisioned: ${opts.name} ===`));
+    console.log(`Client Public Key : ${chalk.cyan(result.clientPublicKey)}`);
+    console.log(`Client VPN IP     : ${opts.ip}`);
+    console.log('');
+    console.log(chalk.yellow.bold('RouterOS v7 Command to Add Peer:'));
+    console.log(chalk.green(result.routerPeerCommand));
+    console.log('');
+
+    if (opts.output) {
+      const outPath = path.resolve(process.cwd(), opts.output);
+      fs.writeFileSync(outPath, result.clientConfig, 'utf-8');
+      console.log(chalk.green(`✔ Client configuration saved to: ${outPath}`));
+    } else {
+      console.log(chalk.gray('# Client .conf File:\n'));
+      console.log(result.clientConfig);
+    }
+
+    if (opts.qr) {
+      console.log(chalk.bold('\nScan QR Code with WireGuard Mobile App:\n'));
+      console.log(result.qrTerminal);
+    }
+  });
+
+program
+  .command('migrate-filter')
+  .description('Transpile legacy RouterOS v6 routing filters to RouterOS v7 rule engine syntax.')
+  .argument('<file>', 'Path to file containing legacy v6 routing filter commands')
+  .option('-o, --output <file>', 'Save converted v7 script to a file')
+  .action((file, opts) => {
+    const filePath = path.resolve(process.cwd(), file);
+    if (!fs.existsSync(filePath)) {
+      console.error(chalk.red(`Error: File not found: ${filePath}`));
+      process.exitCode = 1;
+      return;
+    }
+
+    const legacyScript = fs.readFileSync(filePath, 'utf-8');
+    const result = RoutingMigrator.migrateScript(legacyScript);
+
+    console.log(chalk.bold(`\n=== RouterOS Routing Filter Migration ===`));
+    console.log(`Converted Rules: ${chalk.green(result.migratedRules.length)}`);
+    if (result.warnings.length > 0) {
+      console.log(chalk.yellow(`Warnings (${result.warnings.length}):`));
+      for (const warn of result.warnings) {
+        console.log(`  - ${warn}`);
+      }
+    }
+    console.log('');
+
+    if (opts.output) {
+      const outPath = path.resolve(process.cwd(), opts.output);
+      fs.writeFileSync(outPath, result.script, 'utf-8');
+      console.log(chalk.green(`✔ Transpiled v7 script saved to: ${outPath}`));
+    } else {
+      console.log(chalk.gray('# RouterOS v7 Script:\n'));
+      console.log(result.script);
+    }
+  });
+
+program
+  .command('lint')
+  .description('Run static security audit and credential leak detection on RouterOS v7 .rsc configuration files.')
+  .argument('<file>', 'Path to RouterOS .rsc script file')
+  .action((file) => {
+    const filePath = path.resolve(process.cwd(), file);
+    if (!fs.existsSync(filePath)) {
+      console.error(chalk.red(`Error: File not found: ${filePath}`));
+      process.exitCode = 1;
+      return;
+    }
+
+    const script = fs.readFileSync(filePath, 'utf-8');
+    const result = RouterOsLinter.lint(script);
+
+    console.log(chalk.bold(`\n=== NetDevOps Script Linter: ${path.basename(filePath)} ===`));
+    console.log(`Status: ${result.passed ? chalk.green.bold('PASSED') : chalk.red.bold('FAILED')}`);
+    console.log(`Summary: ${chalk.red(result.summary.critical + ' Critical')}, ${chalk.magenta(result.summary.high + ' High')}, ${chalk.yellow(result.summary.warn + ' Warning')}, ${chalk.blue(result.summary.info + ' Info')}\n`);
+
+    for (const f of result.findings) {
+      let badge = chalk.blue('[INFO]');
+      if (f.severity === 'WARN') badge = chalk.yellow('[WARN]');
+      if (f.severity === 'HIGH') badge = chalk.magenta('[HIGH]');
+      if (f.severity === 'CRITICAL') badge = chalk.red.bold('[CRITICAL]');
+
+      console.log(`${badge} ${chalk.bold(f.id)} (Line ${f.line}): ${f.rule}`);
+      console.log(`  Detail : ${f.message}`);
+      console.log(`  Source : ${chalk.gray(f.rawLine.trim())}`);
+      console.log(`  Fix    : ${chalk.green(f.remediation)}\n`);
+    }
+
+    if (!result.passed) {
+      process.exitCode = 1;
     }
   });
 

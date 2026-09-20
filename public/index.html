@@ -355,6 +355,116 @@
       text-decoration: underline;
     }
 
+    /* Interactive Playground */
+    .playground-tabs {
+      display: flex;
+      background: var(--surface-subtle);
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+    }
+    .playground-panel {
+      padding: 1.25rem;
+      display: none;
+    }
+    .playground-panel.active {
+      display: block;
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 0.85rem;
+      margin-bottom: 1rem;
+    }
+    .form-group {
+      margin-bottom: 0.85rem;
+    }
+    .form-group label {
+      display: block;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--heading);
+      margin-bottom: 0.35rem;
+    }
+    .form-control {
+      width: 100%;
+      background: #07090d;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: #e6edf3;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      padding: 0.6rem 0.8rem;
+      outline: none;
+      transition: border-color 120ms ease;
+    }
+    .form-control:focus {
+      border-color: var(--blue);
+    }
+    textarea.form-control {
+      min-height: 120px;
+      resize: vertical;
+    }
+    .action-btn {
+      background: var(--blue);
+      color: #0b0e14;
+      font-family: var(--font-sans);
+      font-weight: 700;
+      font-size: 0.85rem;
+      border: none;
+      border-radius: 5px;
+      padding: 0.6rem 1.25rem;
+      cursor: pointer;
+      transition: opacity 120ms ease;
+    }
+    .action-btn:hover {
+      opacity: 0.9;
+    }
+    .action-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .result-section {
+      margin-top: 1.25rem;
+      border-top: 1px dashed var(--border);
+      padding-top: 1rem;
+    }
+    .lint-badge {
+      display: inline-block;
+      padding: 0.2rem 0.6rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      border-radius: 4px;
+      margin-right: 0.4rem;
+    }
+    .badge-crit { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid #ef4444; }
+    .badge-high { background: rgba(249, 115, 22, 0.2); color: #fb923c; border: 1px solid #f97316; }
+    .badge-warn { background: rgba(234, 179, 8, 0.2); color: #facc15; border: 1px solid #eab308; }
+    .badge-pass { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid #22c55e; }
+    .lint-card {
+      background: var(--surface-subtle);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.85rem;
+      margin-bottom: 0.65rem;
+    }
+    .lint-card.crit { border-left: 3px solid #ef4444; }
+    .lint-card.high { border-left: 3px solid #f97316; }
+    .lint-card.warn { border-left: 3px solid #eab308; }
+    .qr-container {
+      display: flex;
+      gap: 1.5rem;
+      align-items: flex-start;
+      margin-top: 1rem;
+      flex-wrap: wrap;
+    }
+    .qr-image {
+      background: #ffffff;
+      padding: 8px;
+      border-radius: 6px;
+      width: 160px;
+      height: 160px;
+    }
+
     footer {
       margin-top: 4rem;
       padding-top: 1.5rem;
@@ -421,6 +531,127 @@
         </div>
       </div>
 
+      <h2>Interactive Web Playground</h2>
+      <p class="section-intro">Run zero-credential network automation tasks directly in your browser or via REST API.</p>
+
+      <div class="tab-container" style="margin-bottom: 2.5rem;">
+        <div class="tab-header" role="tablist">
+          <button class="tab-btn active" onclick="setPlaygroundTab('sanitizer')" id="pg-tab-sanitizer">Config Sanitizer</button>
+          <button class="tab-btn" onclick="setPlaygroundTab('pcc')" id="pg-tab-pcc">PCC Calculator</button>
+          <button class="tab-btn" onclick="setPlaygroundTab('wireguard')" id="pg-tab-wireguard">WireGuard Peer &amp; QR</button>
+          <button class="tab-btn" onclick="setPlaygroundTab('linter')" id="pg-tab-linter">NetDevOps Linter</button>
+        </div>
+
+        <!-- 1. Sanitizer Panel -->
+        <div class="playground-panel active" id="pg-panel-sanitizer">
+          <div class="form-group">
+            <label for="sanitizerInput">Raw RouterOS Script or Export</label>
+            <textarea id="sanitizerInput" class="form-control" placeholder="Paste /export or .rsc snippet with passwords, MAC addresses, or serial numbers..."></textarea>
+          </div>
+          <button class="action-btn" onclick="runSanitize()" id="btnSanitize">Redact Secrets Offline</button>
+
+          <div class="result-section" id="sanitizerResultSection" style="display: none;">
+            <div class="panel-meta">
+              <span class="file-path">Sanitized Output (100% Safe to Share with AI)</span>
+              <button class="copy-btn" onclick="copyPlaygroundOutput('sanitizerOutput')">Copy</button>
+            </div>
+            <pre><code id="sanitizerOutput"></code></pre>
+          </div>
+        </div>
+
+        <!-- 2. PCC Calculator Panel -->
+        <div class="playground-panel" id="pg-panel-pcc">
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="pccWans">WAN Interfaces &amp; Bandwidth (Weights)</label>
+              <input type="text" id="pccWans" class="form-control" value="ISP1=100, ISP2=50" placeholder="e.g. ISP1=100, ISP2=50 or WAN1=1, WAN2=1, WAN3=2">
+            </div>
+            <div class="form-group">
+              <label for="pccClassifier">Classifier</label>
+              <select id="pccClassifier" class="form-control">
+                <option value="both-addresses-and-ports">both-addresses-and-ports (Recommended)</option>
+                <option value="both-addresses">both-addresses</option>
+                <option value="src-address">src-address</option>
+                <option value="dst-address">dst-address</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="pccLan">LAN Bridge / Interface</label>
+              <input type="text" id="pccLan" class="form-control" value="bridge-lan">
+            </div>
+          </div>
+          <button class="action-btn" onclick="runPcc()" id="btnPcc">Generate v7 PCC Script</button>
+
+          <div class="result-section" id="pccResultSection" style="display: none;">
+            <div class="panel-meta">
+              <span class="file-path" id="pccStreamsMeta">RouterOS v7 Script</span>
+              <button class="copy-btn" onclick="copyPlaygroundOutput('pccOutput')">Copy</button>
+            </div>
+            <pre><code id="pccOutput"></code></pre>
+          </div>
+        </div>
+
+        <!-- 3. WireGuard Panel -->
+        <div class="playground-panel" id="pg-panel-wireguard">
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="wgClientName">Client Name</label>
+              <input type="text" id="wgClientName" class="form-control" value="laptop-alice">
+            </div>
+            <div class="form-group">
+              <label for="wgClientIp">Client VPN IP</label>
+              <input type="text" id="wgClientIp" class="form-control" value="10.10.0.2/24">
+            </div>
+            <div class="form-group">
+              <label for="wgEndpoint">Router Public Endpoint</label>
+              <input type="text" id="wgEndpoint" class="form-control" value="vpn.example.com:13231">
+            </div>
+            <div class="form-group">
+              <label for="wgPubkey">Router WireGuard Public Key</label>
+              <input type="text" id="wgPubkey" class="form-control" value="yAnz5TF+lXXJte14tji3zlMNq+hd2rYnGD30ZeEqSGI=">
+            </div>
+          </div>
+          <button class="action-btn" onclick="runWireGuard()" id="btnWg">Provision Peer &amp; QR Code</button>
+
+          <div class="result-section" id="wgResultSection" style="display: none;">
+            <div class="qr-container">
+              <div>
+                <img id="wgQrImg" class="qr-image" alt="WireGuard QR Code">
+                <p style="font-size: 0.75rem; color: var(--muted); margin-top: 0.35rem; text-align: center;">Scan with WireGuard App</p>
+              </div>
+              <div style="flex: 1; min-width: 260px;">
+                <div class="panel-meta">
+                  <span class="file-path">RouterOS v7 CLI Command</span>
+                  <button class="copy-btn" onclick="copyPlaygroundOutput('wgRouterCmd')">Copy</button>
+                </div>
+                <pre><code id="wgRouterCmd"></code></pre>
+                <div class="panel-meta" style="margin-top: 0.75rem;">
+                  <span class="file-path">Client .conf File</span>
+                  <button class="copy-btn" onclick="copyPlaygroundOutput('wgClientConf')">Copy</button>
+                </div>
+                <pre><code id="wgClientConf"></code></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. Linter Panel -->
+        <div class="playground-panel" id="pg-panel-linter">
+          <div class="form-group">
+            <label for="linterInput">RouterOS .rsc Script</label>
+            <textarea id="linterInput" class="form-control" placeholder="Paste RouterOS configuration script to inspect for credentials, open resolvers, and syntax errors..."></textarea>
+          </div>
+          <button class="action-btn" onclick="runLinter()" id="btnLinter">Run NetDevOps Audit</button>
+
+          <div class="result-section" id="linterResultSection" style="display: none;">
+            <div class="panel-meta">
+              <span class="file-path" id="linterSummaryBadge">Audit Findings</span>
+            </div>
+            <div id="linterFindingsList" style="margin-top: 0.5rem;"></div>
+          </div>
+        </div>
+      </div>
+
       <h2>Available MCP Tools</h2>
       <p class="section-intro">Callable by connected AI clients via standard MCP tool calls.</p>
 
@@ -437,8 +668,20 @@
             <td class="desc">Generates production configuration scripts for 10 certification tracks (MTCRE, MTCSE, MTCSWE, MTCUME, MTCEWE, MTCIPv6E, MTCTCE, MTCNA, WireGuard, AdList).</td>
           </tr>
           <tr>
-            <td><code>mikrotik_get_chat_prompt</code></td>
-            <td class="desc">Provides RouterOS v7 system guidelines enforcing non-deprecated syntax and 1-click CLI script blocks.</td>
+            <td><code>mikrotik_calculate_pcc</code></td>
+            <td class="desc">Calculates mathematically normalized N-WAN asymmetric PCC load balancing rules and RouterOS v7 scripts with GCD stream distribution.</td>
+          </tr>
+          <tr>
+            <td><code>mikrotik_provision_wireguard</code></td>
+            <td class="desc">Provisions Curve25519 Road-Warrior WireGuard peer keys, client .conf, RouterOS v7 CLI commands, and QR codes offline.</td>
+          </tr>
+          <tr>
+            <td><code>mikrotik_migrate_filter</code></td>
+            <td class="desc">Transpiles legacy RouterOS v6 routing filter rules to modern RouterOS v7 rule engine syntax (<code>if ... then</code>).</td>
+          </tr>
+          <tr>
+            <td><code>mikrotik_lint_config</code></td>
+            <td class="desc">Performs static security audit and credential leak detection on RouterOS v7 .rsc scripts completely offline.</td>
           </tr>
           <tr>
             <td><code>mikrotik_sanitize_config</code></td>
@@ -448,11 +691,15 @@
             <td><code>mikrotik_validate_routing_mark</code></td>
             <td class="desc">Verifies custom routing table declaration and kernel FIB compliance (<code>fib=yes</code>) before Mangle rule injection.</td>
           </tr>
+          <tr>
+            <td><code>mikrotik_get_chat_prompt</code></td>
+            <td class="desc">Provides RouterOS v7 system guidelines enforcing non-deprecated syntax and 1-click CLI script blocks.</td>
+          </tr>
         </tbody>
       </table>
 
       <h2>Endpoints &amp; Documentation</h2>
-      <p class="section-intro">Machine-readable specifications and references.</p>
+      <p class="section-intro">Machine-readable specifications and REST references.</p>
 
       <table>
         <thead>
@@ -484,13 +731,33 @@
             <td>Complete technical dossier and 10-track CLI configuration scripts</td>
           </tr>
           <tr>
+            <td><a href="/api/v1/knowledge/pcc" class="doc-link">/api/v1/knowledge/pcc</a></td>
+            <td>POST</td>
+            <td>Asymmetric PCC load balancing calculator</td>
+          </tr>
+          <tr>
+            <td><a href="/api/v1/knowledge/wireguard" class="doc-link">/api/v1/knowledge/wireguard</a></td>
+            <td>POST</td>
+            <td>Road-Warrior WireGuard peer &amp; QR provisioner</td>
+          </tr>
+          <tr>
+            <td><a href="/api/v1/knowledge/migrate-filter" class="doc-link">/api/v1/knowledge/migrate-filter</a></td>
+            <td>POST</td>
+            <td>RouterOS v6 to v7 routing filter transpiler</td>
+          </tr>
+          <tr>
+            <td><a href="/api/v1/knowledge/lint" class="doc-link">/api/v1/knowledge/lint</a></td>
+            <td>POST</td>
+            <td>NetDevOps script linter &amp; credential leak detector</td>
+          </tr>
+          <tr>
             <td><a href="/api/v1/knowledge/tracks" class="doc-link">/api/v1/knowledge/tracks</a></td>
-            <td>JSON</td>
+            <td>GET</td>
             <td>List of all 10 MikroTik Certification track blueprints</td>
           </tr>
           <tr>
             <td><a href="/health" class="doc-link">/health</a></td>
-            <td>JSON</td>
+            <td>GET</td>
             <td>Service liveness check</td>
           </tr>
         </tbody>
@@ -602,6 +869,173 @@ Rules:
     }
 
     setTab('cursor');
+
+    /* Playground Logic */
+    function setPlaygroundTab(key) {
+      document.querySelectorAll('#pg-tab-sanitizer, #pg-tab-pcc, #pg-tab-wireguard, #pg-tab-linter').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.playground-panel').forEach(panel => panel.classList.remove('active'));
+      const btn = document.getElementById('pg-tab-' + key);
+      const panel = document.getElementById('pg-panel-' + key);
+      if (btn) btn.classList.add('active');
+      if (panel) panel.classList.add('active');
+    }
+
+    function copyPlaygroundOutput(elemId) {
+      const el = document.getElementById(elemId);
+      if (!el) return;
+      const text = el.innerText || el.textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = event?.target;
+        if (btn && btn.tagName === 'BUTTON') {
+          const orig = btn.innerText;
+          btn.innerText = 'Copied';
+          setTimeout(() => { btn.innerText = orig; }, 2000);
+        }
+      });
+    }
+
+    async function runSanitize() {
+      const btn = document.getElementById('btnSanitize');
+      const input = document.getElementById('sanitizerInput').value.trim();
+      if (!input) return;
+      btn.disabled = true;
+      btn.innerText = 'Sanitizing...';
+      try {
+        const res = await fetch('/api/v1/knowledge/sanitize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ configText: input })
+        });
+        const data = await res.json();
+        document.getElementById('sanitizerOutput').innerText = data.sanitized || data.error || 'Empty response';
+        document.getElementById('sanitizerResultSection').style.display = 'block';
+      } catch (err) {
+        alert('Sanitization failed: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerText = 'Redact Secrets Offline';
+      }
+    }
+
+    async function runPcc() {
+      const btn = document.getElementById('btnPcc');
+      const rawWans = document.getElementById('pccWans').value.trim();
+      const classifier = document.getElementById('pccClassifier').value;
+      const lanInterface = document.getElementById('pccLan').value.trim() || 'bridge-lan';
+      
+      const wans = rawWans.split(',').map(part => {
+        const [name, wStr] = part.trim().split('=');
+        return { name: name.trim(), weight: parseInt(wStr || '1', 10) || 1, gateway: 'gateway_' + name.trim() };
+      }).filter(w => w.name);
+
+      if (wans.length < 2) {
+        alert('Please specify at least 2 WAN interfaces with weights (e.g. ISP1=100, ISP2=50)');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerText = 'Calculating...';
+      try {
+        const res = await fetch('/api/v1/knowledge/pcc', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ wans, classifier, lanInterface })
+        });
+        const data = await res.json();
+        document.getElementById('pccStreamsMeta').innerText = `RouterOS v7 Script (${data.totalStreams} Total Balanced Streams)`;
+        document.getElementById('pccOutput').innerText = data.script || data.error || '';
+        document.getElementById('pccResultSection').style.display = 'block';
+      } catch (err) {
+        alert('PCC calculation failed: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerText = 'Generate v7 PCC Script';
+      }
+    }
+
+    async function runWireGuard() {
+      const btn = document.getElementById('btnWg');
+      const clientName = document.getElementById('wgClientName').value.trim();
+      const clientIp = document.getElementById('wgClientIp').value.trim();
+      const serverEndpoint = document.getElementById('wgEndpoint').value.trim();
+      const serverPublicKey = document.getElementById('wgPubkey').value.trim();
+
+      if (!clientName || !clientIp || !serverEndpoint || !serverPublicKey) {
+        alert('All WireGuard fields are required.');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerText = 'Provisioning...';
+      try {
+        const res = await fetch('/api/v1/knowledge/wireguard', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clientName, clientIp, serverEndpoint, serverPublicKey })
+        });
+        const data = await res.json();
+        document.getElementById('wgQrImg').src = data.qrDataUrl;
+        document.getElementById('wgRouterCmd').innerText = data.routerPeerCommand;
+        document.getElementById('wgClientConf').innerText = data.clientConfig;
+        document.getElementById('wgResultSection').style.display = 'block';
+      } catch (err) {
+        alert('WireGuard provisioning failed: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerText = 'Provision Peer & QR Code';
+      }
+    }
+
+    async function runLinter() {
+      const btn = document.getElementById('btnLinter');
+      const script = document.getElementById('linterInput').value.trim();
+      if (!script) return;
+
+      btn.disabled = true;
+      btn.innerText = 'Auditing...';
+      try {
+        const res = await fetch('/api/v1/knowledge/lint', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ script })
+        });
+        const data = await res.json();
+        const badgeMeta = document.getElementById('linterSummaryBadge');
+        if (data.passed) {
+          badgeMeta.innerHTML = '<span class="lint-badge badge-pass">PASSED</span> Zero high-risk findings detected';
+        } else {
+          badgeMeta.innerHTML = `<span class="lint-badge badge-crit">${data.summary.critical} CRITICAL</span> <span class="lint-badge badge-high">${data.summary.high} HIGH</span> <span class="lint-badge badge-warn">${data.summary.warn} WARN</span>`;
+        }
+
+        const list = document.getElementById('linterFindingsList');
+        list.innerHTML = '';
+        if (data.findings && data.findings.length > 0) {
+          data.findings.forEach(f => {
+            const card = document.createElement('div');
+            card.className = 'lint-card ' + (f.severity === 'CRITICAL' ? 'crit' : f.severity === 'HIGH' ? 'high' : 'warn');
+            card.innerHTML = `
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem;">
+                <strong>[${f.id}] ${f.rule}</strong>
+                <span class="lint-badge ${f.severity === 'CRITICAL' ? 'badge-crit' : f.severity === 'HIGH' ? 'badge-high' : 'badge-warn'}">Line ${f.line} &bull; ${f.severity}</span>
+              </div>
+              <p style="font-size:0.85rem; color:var(--text); margin-bottom:0.35rem;">${f.message}</p>
+              <div style="font-family:var(--font-mono); font-size:0.8rem; color:var(--muted); background:#07090d; padding:0.4rem 0.6rem; border-radius:4px; margin-bottom:0.35rem;">${f.rawLine.trim()}</div>
+              <div style="font-size:0.82rem; color:var(--blue);"><strong>Fix:</strong> <code>${f.remediation}</code></div>
+            `;
+            list.appendChild(card);
+          });
+        } else {
+          list.innerHTML = '<p style="font-size:0.85rem; color:var(--green);">✔ Script adheres to RouterOS v7 security best practices.</p>';
+        }
+
+        document.getElementById('linterResultSection').style.display = 'block';
+      } catch (err) {
+        alert('Linter failed: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerText = 'Run NetDevOps Audit';
+      }
+    }
   </script>
 </body>
 </html>

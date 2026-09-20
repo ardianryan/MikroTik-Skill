@@ -7,6 +7,10 @@ import { ConfigSanitizer } from '../safety/sanitizer.js';
 import { CertifiedTemplateGenerator, type CertificationTrack } from '../safety/templates.js';
 import { MangleOrderEngine } from '../safety/order-engine.js';
 import { ChatPromptExporter } from '../safety/prompt-export.js';
+import { PccCalculator, type PccOptions } from '../safety/pcc-calculator.js';
+import { WireGuardProvisioner, type WireGuardClientOptions } from '../safety/wireguard.js';
+import { RoutingMigrator } from '../safety/routing-migrator.js';
+import { RouterOsLinter } from '../safety/linter.js';
 import { OpenApiGenerator } from './openapi.js';
 
 export interface HttpServerOptions {
@@ -179,6 +183,52 @@ export class MikroTikHttpServer {
 
       const sanitized = ConfigSanitizer.sanitizeText(configText);
       this.sendJson(res, 200, { sanitized });
+      return;
+    }
+
+    if (pathname === '/api/v1/knowledge/pcc' && method === 'POST') {
+      const body = (await this.parseBody(req)) as unknown as PccOptions;
+      if (!body.wans || !Array.isArray(body.wans) || body.wans.length < 2) {
+        this.sendJson(res, 400, { error: 'Parameter "wans" must be an array of at least 2 WAN definitions with name and weight.' });
+        return;
+      }
+      const result = PccCalculator.calculate(body);
+      this.sendJson(res, 200, result);
+      return;
+    }
+
+    if (pathname === '/api/v1/knowledge/wireguard' && method === 'POST') {
+      const body = (await this.parseBody(req)) as unknown as WireGuardClientOptions;
+      if (!body.clientName || !body.clientIp || !body.serverEndpoint || !body.serverPublicKey) {
+        this.sendJson(res, 400, { error: 'Parameters "clientName", "clientIp", "serverEndpoint", and "serverPublicKey" are required.' });
+        return;
+      }
+      const result = await WireGuardProvisioner.provisionClient(body);
+      this.sendJson(res, 200, result);
+      return;
+    }
+
+    if (pathname === '/api/v1/knowledge/migrate-filter' && method === 'POST') {
+      const body = await this.parseBody(req);
+      const script = String(body.script || '');
+      if (!script) {
+        this.sendJson(res, 400, { error: 'Parameter "script" containing legacy v6 routing filter rules is required.' });
+        return;
+      }
+      const result = RoutingMigrator.migrateScript(script);
+      this.sendJson(res, 200, result);
+      return;
+    }
+
+    if (pathname === '/api/v1/knowledge/lint' && method === 'POST') {
+      const body = await this.parseBody(req);
+      const script = String(body.script || '');
+      if (!script) {
+        this.sendJson(res, 400, { error: 'Parameter "script" containing RouterOS commands is required.' });
+        return;
+      }
+      const result = RouterOsLinter.lint(script);
+      this.sendJson(res, 200, result);
       return;
     }
 

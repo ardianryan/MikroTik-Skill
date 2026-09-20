@@ -18,5 +18,9 @@ describe('OpenApiGenerator', () => {
     assert.ok(paths['/api/v1/knowledge/validate']);
     assert.ok(paths['/api/v1/knowledge/sanitize']);
     assert.ok(paths['/api/v1/knowledge/prompt']);
+    assert.ok(paths['/api/v1/knowledge/pcc']);
+    assert.ok(paths['/api/v1/knowledge/wireguard']);
+    assert.ok(paths['/api/v1/knowledge/migrate-filter']);
+    assert.ok(paths['/api/v1/knowledge/lint']);
   });
 });

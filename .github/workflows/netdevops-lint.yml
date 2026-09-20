@@ -1,0 +1,30 @@
+name: NetDevOps Linter
+
+on:
+  push:
+    paths:
+      - '**.rsc'
+      - 'src/safety/linter.ts'
+  pull_request:
+    paths:
+      - '**.rsc'
+      - 'src/safety/linter.ts'
+
+jobs:
+  lint-rsc:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Execute NetDevOps Linter Tests
+        run: npx tsx --test test/linter.test.ts
