@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.1.1] - 2026-09-20
+
+### Added
+- **Fleet Inventory & Multi-Router Management:**
+  - Zero-dependency YAML/JSON inventory parser (`inventory.yml`, `inventory.example.yml`) with environment variable interpolation.
+  - Multi-router targeting across profiles and inventory via `mtik devices` / `mtik inventory` CLI and `mikrotik_list_devices` MCP tool.
+  - Global `-d, --device <name>` CLI option and MCP `targetDevice` parameter.
+- **Hardware & Live Diagnostics Operations:**
+  - **PoE Power Management:** `mtik poe` CLI and `mikrotik_manage_poe` MCP tool for inspecting wattage/voltage and power-cycling connected devices.
+  - **Live Log Triage:** `mtik logs` CLI and `mikrotik_get_logs` MCP tool with topic filtering (`firewall`, `dhcp`, `warning`, etc.).
+  - **CAKE SQM Bufferbloat Queues:** `mtik queue` CLI and `mikrotik_manage_queues` MCP tool for low-latency CAKE queue management.
+  - **Wireless Client Telemetry:** `mtik wifi` CLI and `mikrotik_get_wireless_clients` MCP tool supporting both RouterOS v7 `wifi`/`wifiwave2` and legacy wireless packages.
+- **NPM Distribution & Automated Publishing Pipeline:**
+  - Added dedicated GitHub Actions workflow `.github/workflows/publish.yml` with `workflow_dispatch` and release trigger using `${{ secrets.NPM_TOKEN }}`.
+  - Registered `mikrotik-skill` binary alias in `package.json` for zero-setup execution via `npx mikrotik-skill` and `npx mikrotik-skill mcp`.
+  - Added CLI `mcp` subcommand for direct STDIO MCP server boot.
+- **Enterprise Reference Guides & 3-View Workbench Portal:**
+  - Added `fleet-inventory.md`, `poe-power-management.md`, and `log-triage-forensics.md` to `.agents/skills/mikrotik/references/`.
+  - Redesigned `public/index.html` into a dark titanium 3-view workbench portal (`#overview`, `#tools`, `#docs`).
+
+---
+
 ## [1.1.0] - 2026-09-19
 
 ### Added
