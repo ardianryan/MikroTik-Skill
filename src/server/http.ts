@@ -1,4 +1,6 @@
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
 import { URL } from 'node:url';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -67,6 +69,22 @@ export class MikroTikHttpServer {
       });
       res.end();
       return;
+    }
+
+    if ((pathname === '/' || pathname === '/index.html') && method === 'GET') {
+      const isHtmlRequest = req.headers.accept?.includes('text/html') || pathname === '/index.html';
+      if (isHtmlRequest) {
+        const publicPath = path.resolve(process.cwd(), 'public', 'index.html');
+        if (fs.existsSync(publicPath)) {
+          const html = fs.readFileSync(publicPath, 'utf-8');
+          res.writeHead(200, {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Access-Control-Allow-Origin': '*',
+          });
+          res.end(html);
+          return;
+        }
+      }
     }
 
     if ((pathname === '/' || pathname === '/api' || pathname === '/api/') && method === 'GET') {
