@@ -16,6 +16,10 @@ MikroTik Skill provides air-gapped, zero-credential network intelligence, certif
 
 ## Core Capabilities
 - **Certified 10-Track Runbooks:** Standardized, production-ready RouterOS v7 CLI templates covering MTCRE (Dual-WAN PCC), MTCSE (Firewall hardening), MTCUME (802.1X RADIUS & User Manager v7), MTCSWE (Bridge VLAN Filtering), MTCEWE (WiFi 6 CAPsMAN), MTCIPv6E (SLAAC / DHCPv6-PD), MTCTCE (CAKE SQM QoS), MTCNA (Base routing), WireGuard site-to-site, and AdList DNS malware filtering.
+- **Fleet Inventory Orchestration:** Multi-router management via `inventory.yml` and JSON with `${ENV_VAR}` secret interpolation.
+- **Remote PoE Power Management:** Port power monitoring (`poe-out-status`, voltage, current, wattage) and remote cold power-cycling for unresponsive APs and cameras.
+- **Forensic Log Triage & Threat Hunting:** Filtered event inspection (`firewall`, `warning`, `account`, `dhcp`, `wireguard`) with flash memory preservation guidelines.
+- **Wi-Fi 6 Client Diagnostics:** Live registration table telemetry with SNR, signal strength, and 802.11ax OFDMA metrics.
 - **FIB & Routing Mark Verification:** Validates proposed routing tables in `/routing table` with `fib=yes` before Mangle rule placement.
 - **Deterministic Mangle Order:** Enforces strict packet classification hierarchy (Bypass -> Client Overrides -> PCC Load Balancing).
 - **Config & Secret Redactor:** Deterministically redacts MAC addresses, serial numbers, passwords, preshared keys, and VPN identifiers from raw RouterOS configurations.

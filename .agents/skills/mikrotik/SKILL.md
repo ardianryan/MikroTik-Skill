@@ -21,6 +21,9 @@ references:
   - references/rest-api.md
   - references/cli-rest-complete-reference.md
   - references/official-manual-map.md
+  - references/fleet-inventory.md
+  - references/poe-power-management.md
+  - references/log-triage-forensics.md
 ---
 
 # MikroTik RouterOS v7 Automation & Enterprise Engineering Skill
@@ -261,6 +264,45 @@ When the user shares configuration snippets or asks to export a backup:
    - All secret fields (`password=`, `preshared-key=`, `private-key=`, `tunnel-token=`) are masked with `********`.
 3. Never store or output unredacted `.rsc` files in public logs.
 
+### Workflow E: Multi-Router Fleet Inventory Orchestration
+When managing multiple MikroTik routers or switches across campus/branches:
+1. Define devices declaratively in `inventory.yml` using `${ENV_VARS}` for credentials (refer to [`fleet-inventory.md`](./references/fleet-inventory.md)).
+2. Enumerate active inventory devices: `mtik devices` or `mikrotik_list_devices`.
+3. Pass `targetDevice: "<name>"` (or CLI `-d <name>`) to target operations at a specific device rather than the default router.
+4. Execute synchronized fleet audits and sanitized backups using batch loops.
+
+### Workflow F: Remote PoE Port Diagnostics & Power-Cycling
+When an IP camera, VoIP phone, or downstream Access Point is unresponsive:
+1. Check port power status: `mtik poe` (or call `mikrotik_manage_poe` with `action: "status"`).
+2. Inspect `poe-out-status`, `poe-voltage`, and `poe-power` (refer to [`poe-power-management.md`](./references/poe-power-management.md)).
+3. If the device is frozen, cold-reboot it without rebooting the main switch:
+   ```bash
+   mtik poe --cycle ether2
+   # or via MCP: mikrotik_manage_poe with action: "power-cycle", interface: "ether2"
+   ```
+4. Verify port returns to `poe-out-status=powered-on` and device reconnects.
+
+### Workflow G: Forensic Log Analysis & Threat Triage
+When investigating authentication failures, rogue DHCP servers, or drops:
+1. Query system logs filtered by relevant topics:
+   ```bash
+   # Investigate brute-force attempts
+   mtik logs -t account,warning -l 50
+   # Investigate rogue DHCP servers
+   mtik logs -t dhcp,warning -l 30
+   # or via MCP: mikrotik_get_logs with topics: ["account", "warning"], limit: 50
+   ```
+2. For brute force attempts, cross-reference source IP against active firewall address lists (refer to [`log-triage-forensics.md`](./references/log-triage-forensics.md)).
+3. Never write high-frequency firewall logs to NAND flash (`action=disk`); always use `memory` or forward to a remote SIEM syslog host (`action=remote`).
+
+### Workflow H: Wi-Fi 6 Client Diagnostic & SNR Triage
+When troubleshooting poor wireless coverage, roaming drops, or low throughput:
+1. Inspect live client registrations: `mtik wifi` or `mikrotik_get_wireless_clients`.
+2. Evaluate signal metrics:
+   - **Signal Strength:** Best: `-45 dBm` to `-65 dBm`. Unacceptable: `< -75 dBm`.
+   - **Signal-to-Noise Ratio (SNR):** Should be `>= 25 dB` for reliable Wi-Fi 6 OFDMA throughput.
+3. If clients are "sticky" to distant APs, tune CAPsMAN access list reject thresholds (`signal-range=-120..-78 action=reject`) to force roaming.
+
 ---
 
 ## 5. RouterOS v7 Production Mangle Blueprint
@@ -331,6 +373,10 @@ When the user shares configuration snippets or asks to export a backup:
 | QoS queue shows 0 bps despite heavy traffic | FastTrack is bypassing Mangle and Queue trees | Set `connection-mark=no-mark` on FastTrack rule |
 | Container fails to start (`error: disk full`) | Container written to internal NAND flash | Set `root-dir=usb1/...` and `tmpdir=usb1/tmp` |
 | CLI connection refused | REST API service (`www` or `www-ssl`) disabled | `/ip service enable www-ssl` or use port 8728 binary API |
+| PoE port shows `overload` or `short-circuit` | Downstream camera/AP exceeding port wattage or shorted cable | Inspect cable termination, check power budget, run `mtik poe --cycle <iface>` |
+| Wi-Fi 6 client deauthentications / low SNR | Sticky client associated to distant AP with SNR < 20 dB | Run `mtik wifi`, tune CAPsMAN access-list `signal-range=-120..-78 action=reject` |
+| NAND flash write exhaustion | Logging firewall packets directly to `disk` action | Set `/system logging action set memory memory-lines=5000` or forward to remote syslog |
+| Device name not resolved in fleet | Missing inventory entry or unresolved `${ENV_VAR}` | Check `inventory.yml` and test resolution with `mtik devices` |
 
 ---
 
@@ -343,6 +389,13 @@ mtik test                                     # Test REST / Port 8728 connection
 mtik status                                   # Inspect CPU load, memory, active interfaces, DHCP leases
 mtik monitor -i ether1,ether2                 # Live terminal throughput and packet rate monitor
 mtik profile [--save <name>|--switch <name>]  # Manage multiple router connection profiles
+
+# Fleet Inventory & Multi-Device Orchestration
+mtik devices                                  # List managed fleet routers from inventory.yml & profiles
+mtik logs [-d <dev>] [-t <topics>] [-l <num>] # Stream and filter live router/firewall event logs
+mtik poe [-d <dev>] [-l|--cycle <iface>]      # Inspect PoE voltage/power or power-cycle downstream port
+mtik queue [-d <dev>] [-l|--cake]             # Inspect simple queues or provision low-latency CAKE SQM
+mtik wifi [-d <dev>]                          # Inspect connected Wi-Fi 6 / wifiwave2 client registrations
 
 # Security & Safety
 mtik audit                                    # Execute 7-Pillar Security Audit
@@ -373,7 +426,7 @@ mtik install-mcp -t <antigravity|cursor|claude|windsurf|all> [--with-env]
 ### Model Context Protocol (`mtik-mcp`) Tools
 - `mikrotik_test_connection`: Verifies device connectivity, authentication, and transport mode (REST HTTPS or Binary 8728).
 - `mikrotik_get_system_status`: Returns CPU load, memory usage, RouterOS version, uptime, and active interface link status.
-- `mikrotik_audit_security`: Performs automated 10-pillar security audit and returns findings with remediation commands.
+- `mikrotik_audit_security`: Performs automated 7-pillar security audit and returns findings with remediation commands.
 - `mikrotik_list_mangle`: Fetches all firewall mangle rules with index ordering and tier classifications.
 - `mikrotik_force_routing`: Directs an IP address to a routing table. Supports `dryRun: true` for unified diff preview and automated 30s watchdog rollback.
 - `mikrotik_manage_dhcp_lease`: Queries active leases and registers static IP/MAC bindings.
@@ -383,12 +436,20 @@ mtik install-mcp -t <antigravity|cursor|claude|windsurf|all> [--with-env]
 - `mikrotik_generate_template`: Generates standardized production configuration templates across all 10 certification tracks.
 - `mikrotik_execute_command`: Executes arbitrary RouterOS CLI command or script atomically with output sanitization.
 - `mikrotik_rest_query`: Sends direct HTTP REST API calls (GET, POST, PUT, PATCH, DELETE) to any `/rest/<menu>` endpoint.
+- `mikrotik_list_devices`: Enumerates all managed routers from `inventory.yml`, stored profiles, or active environment.
+- `mikrotik_get_logs`: Retrieves live system and firewall logs with optional topic filtering and limit.
+- `mikrotik_manage_poe`: Inspects PoE port power metrics or executes clean cold power cycling on stuck downstream devices.
+- `mikrotik_manage_queues`: Queries simple queues or provisions low-latency CAKE SQM queue trees to defeat bufferbloat.
+- `mikrotik_get_wireless_clients`: Inspects connected wireless clients with SNR, signal strength, and transmission rates.
 
 ---
 
 ## 9. Enterprise Reference Architecture Guides
 
 For detailed, step-by-step implementation templates, refer to:
+- [Multi-Router Fleet Inventory & Infrastructure Automation](./references/fleet-inventory.md)
+- [Power over Ethernet (PoE) Architecture & Power Management](./references/poe-power-management.md)
+- [Forensic Log Analysis, Threat Triage & Syslog Architecture](./references/log-triage-forensics.md)
 - [RouterOS v7 Complete CLI & REST API Master Reference](./references/cli-rest-complete-reference.md)
 - [MTCSWE: Advanced Switching, LACP Bonding & Multicast](./references/mtcswe-advanced-switching.md)
 - [MTCINE: Enterprise Inter-Networking, MPLS, VPLS & VRF](./references/mtcine-mpls-vpls-vrf.md)

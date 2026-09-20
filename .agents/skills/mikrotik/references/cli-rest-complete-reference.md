@@ -110,6 +110,7 @@ When formulating CLI commands or multi-line scripts for `/rest/execute` or termi
 | `/system/backup` | `save name=... password=...`, `load name=...` | `POST /rest/system/backup/save`, `POST /rest/system/backup/load` |
 | `/system/reboot` | `reboot` | `POST /rest/system/reboot` |
 | `/system/shutdown` | `shutdown` | `POST /rest/system/shutdown` |
+| `/log` | `print`, `print where topics~"warning"` | `GET /rest/log` |
 
 ---
 
@@ -119,6 +120,8 @@ When formulating CLI commands or multi-line scripts for `/rest/execute` or termi
 | `/interface` | `print`, `set <id> disabled=...` | `GET/PATCH /rest/interface` |
 | `/interface/ethernet` | `print`, `set <id> mtu=... speed=...` | `GET/PATCH /rest/interface/ethernet` |
 | `/interface/ethernet/monitor` | `monitor ether1 once` | `POST /rest/interface/ethernet/monitor` (`once: ""`) |
+| `/interface/ethernet/poe` | `print`, `set <id> poe-out=auto-on` | `GET/PATCH /rest/interface/ethernet/poe` |
+| `/interface/ethernet/poe/power-cycle` | `power-cycle <interface>` | `POST /rest/execute` (`script: "/interface ethernet poe power-cycle <iface>"`) |
 | `/interface/bridge` | `print`, `add name=... vlan-filtering=yes` | `GET/PUT/PATCH/DELETE /rest/interface/bridge` |
 | `/interface/bridge/port` | `add bridge=... interface=... pvid=...` | `GET/PUT/PATCH/DELETE /rest/interface/bridge/port` |
 | `/interface/bridge/vlan` | `add bridge=... tagged=... vlan-ids=...` | `GET/PUT/PATCH/DELETE /rest/interface/bridge/vlan` |
@@ -132,6 +135,7 @@ When formulating CLI commands or multi-line scripts for `/rest/execute` or termi
 | `/interface/list` | `add name=...` | `GET/PUT/PATCH/DELETE /rest/interface/list` |
 | `/interface/list/member` | `add list=... interface=...` | `GET/PUT/PATCH/DELETE /rest/interface/list/member` |
 | `/interface/wifi` | `print`, `set <id> configuration=...` | `GET/PATCH /rest/interface/wifi` |
+| `/interface/wifi/registration-table` | `print` | `GET /rest/interface/wifi/registration-table` |
 | `/interface/wifi/capsman` | `set enabled=yes ...` | `GET/PATCH /rest/interface/wifi/capsman` |
 | `/interface/wifi/security` | `add name=... authentication-types=...` | `GET/PUT/PATCH/DELETE /rest/interface/wifi/security` |
 | `/interface/wifi/channel` | `add name=... band=... width=...` | `GET/PUT/PATCH/DELETE /rest/interface/wifi/channel` |
