@@ -7,8 +7,8 @@ Deploying advanced traffic engineering (CAKE QoS, WireGuard, Docker containers, 
 ## 1. Processor Architecture Taxonomy
 
 | Architecture | Representative Models | Strengths | Severe Bottlenecks / Limitations |
-| **ARM64** | RB5009, CCR2004, CCR2116, CCR2216, hAP ax2, hAP ax3, L009 | High single-core IPC, native 64-bit container support (`/container`), wire-speed WireGuard crypto. | High memory utilization if containerized microservices leak RAM. |
-| **ARM32** | hEX S new (`E60iUGS`), hEX refresh (`E50UG`), RB1100AHx4, Chateau series | Energy efficient, modern RouterOS v7 kernel support, 512MB-1GB RAM. | EN7562CT CPU uses ARMv5TE instruction subset; containers require `arm32v5` (`linux/arm/v5`) images to avoid illegal instruction faults. |
+| **ARM64** | RB5009, CCR2004, CCR2116, CCR2216, hEX refresh (`E50UG`), hAP ax2, hAP ax3, L009 | High single-core IPC, native 64-bit container support (`/container`), wire-speed WireGuard crypto. | High memory utilization if containerized microservices leak RAM. |
+| **ARM / ARM32** | hEX S new (`E60iUGS`), RB1100AHx4, Chateau series | Energy efficient, modern RouterOS v7 kernel support, 512MB-1GB RAM. | EN7562CT CPU uses ARMv5TE instruction subset; containers require `arm32v5` (`linux/arm/v5`) images to avoid illegal instruction faults. |
 | **MMIPS / MIPSBE** | hEX S legacy (`RB760iGS`), hEX legacy (`RB750Gr3`), RB2011, RB3011, cAP ac | Inexpensive, low power consumption, reliable for simple NAT. | **Cannot run CAKE QoS above 150-250 Mbps** without hitting 100% CPU; no container support. |
 | **TILE** | CCR1009, CCR1016, CCR1036, CCR1072 | Massive core count (9 to 72 cores), high aggregate packet throughput. | Single-core performance is weak; RouterOS v7 kernel does not support containers on Tile; BGP single-thread convergence is slower than ARM64. |
 | **x86 / CHR** | Cloud Hosted Router (VMware, Proxmox, AWS, Bare Metal) | Scalable vCPU and RAM; easily handles multi-gigabit BGP and CAKE if vCPUs are pinned. | Lacks hardware switch ASICs; all L2 bridging is processed in software. |
