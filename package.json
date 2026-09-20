@@ -54,12 +54,12 @@
   ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.6.1",
-    "chalk": "^5.4.1",
-    "commander": "^13.1.0",
-    "dotenv": "^16.4.7",
+    "chalk": "^6.0.0",
+    "commander": "^15.0.0",
+    "dotenv": "^17.4.2",
     "node-routeros": "^1.6.9",
     "qrcode": "^1.5.4",
-    "zod": "^3.24.2"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/node": "^26.6.1",
