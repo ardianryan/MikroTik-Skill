@@ -1,0 +1,49 @@
+name: Weekly Security Audit
+
+on:
+  schedule:
+    # Run every Monday at 02:00 UTC (09:00 WIB)
+    - cron: '0 2 * * 1'
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'package*.json'
+      - '.github/workflows/security-audit.yml'
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  audit-dependencies:
+    name: Dependency Vulnerability & Integrity Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: 'npm'
+
+      - name: Verify package-lock.json integrity
+        run: npm ci
+
+      - name: Run NPM Audit (High/Critical Check)
+        run: npm audit --audit-level=high
+
+      - name: Run Strict Typecheck
+        run: npm run typecheck
+
+      - name: Run Full Test Suite
+        run: npm test
+
+      - name: Build & Run Security Linter on Certified Templates
+        run: |
+          npm run build
+          node dist/cli/index.js lint references/official-manual-map.md || true
