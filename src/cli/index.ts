@@ -587,6 +587,13 @@ program
   });
 
 program
+  .command('mcp')
+  .description('Start Model Context Protocol (MCP) server over STDIO for AI agent integration (Antigravity, Cursor, Claude).')
+  .action(async () => {
+    await import('../mcp/index.js');
+  });
+
+program
   .command('template')
   .alias('generate')
   .description('Generate standardized RouterOS v7 configuration templates for MikroTik Certification tracks.')

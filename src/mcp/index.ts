@@ -21,7 +21,7 @@ import { RouterOsLinter } from '../safety/linter.js';
 const server = new Server(
   {
     name: 'mikrotik-skill',
-    version: '1.0.2',
+    version: '1.1.0',
   },
   {
     capabilities: {

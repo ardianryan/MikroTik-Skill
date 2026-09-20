@@ -8,8 +8,20 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
+    "mikrotik-skill": "dist/cli/index.js",
     "mtik": "dist/cli/index.js",
     "mtik-mcp": "dist/mcp/index.js"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ardianryan/MikroTik-Skill.git"
+  },
+  "homepage": "https://github.com/ardianryan/MikroTik-Skill#readme",
+  "bugs": {
+    "url": "https://github.com/ardianryan/MikroTik-Skill/issues"
   },
   "files": [
     "dist",
