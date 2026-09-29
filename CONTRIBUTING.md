@@ -1,9 +1,9 @@
-# Contributing to MikroTik Skill
+# Contributing to MikroTik NetDevOps Toolkit & MCP Server
 
-Thank you for your interest in contributing to this MikroTik RouterOS v7 automation toolkit!
+Thank you for your interest in contributing to this MikroTik RouterOS v7 NetDevOps automation toolkit, MCP server, and AI engineering suite!
 
 ## Project Context
-This project was authored by **Ardian Ryan** (<me@ardianryan.com>) primarily for personal daily productivity, network operations, and workflow automation. It is open-sourced to provide a reliable, modular, and safe foundation for network engineers and AI agent tool calling.
+This project was authored by **Ardian Ryan** (<me@ardianryan.com>) to streamline network operations, multi-WAN load balancing, automated security auditing, and safe rule deployment on MikroTik RouterOS v7 devices. It is open-sourced to provide a reliable, modular, and safe foundation for network engineers and AI agent tool calling via the Model Context Protocol (MCP) and CLI.
 
 ## Development Setup
 

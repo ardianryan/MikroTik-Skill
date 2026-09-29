@@ -1,7 +1,7 @@
 {
   "name": "mikrotik-skill",
   "version": "1.1.2",
-  "description": "Production-grade MikroTik RouterOS v7 automation skill, CLI toolkit, and MCP server for network engineers and AI agents.",
+  "description": "Production-grade MikroTik RouterOS v7 NetDevOps toolkit, Model Context Protocol (MCP) server, and AI engineering engine.",
   "author": "Ardian Ryan <me@ardianryan.com>",
   "license": "GPL-3.0-or-later",
   "type": "module",

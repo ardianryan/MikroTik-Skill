@@ -26,9 +26,9 @@ references:
   - references/log-triage-forensics.md
 ---
 
-# MikroTik RouterOS v7 Automation & Enterprise Engineering Skill
+# MikroTik RouterOS v7 AI Knowledge & Engineering Engine (The Brain)
 
-Production-grade guidance, architecture standards, and operational runbooks for managing MikroTik RouterOS v7 devices through CLI (`mtik`) and Model Context Protocol (`mtik-mcp`).
+Production-grade architecture standards, deterministic networking runbooks, and certified rules powering the MikroTik NetDevOps Toolkit (`mtik`), Model Context Protocol server (`mtik-mcp`), and AI coding agents.
 
 ---
 

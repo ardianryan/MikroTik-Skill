@@ -6,12 +6,14 @@
   MMM      MMM  III  KKK KKK   RRRRRR    OOO  OOO     TTT     III  KKK KKK
   MMM      MMM  III  KKK  KKK  RRR  RRR   OOOOOO      TTT     III  KKK  KKK
 
-  MikroTik RouterOS v7 Skill & Automation Toolkit (CLI & MCP Server)
+  MikroTik RouterOS v7 NetDevOps Toolkit & MCP Server
 ```
 
-# MikroTik RouterOS v7 Skill & CLI Toolkit
+# MikroTik RouterOS v7 NetDevOps Toolkit & MCP Server
 
 [![CI](https://github.com/ardianryan/MikroTik-Skill/actions/workflows/ci.yml/badge.svg)](https://github.com/ardianryan/MikroTik-Skill/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/mikrotik-skill?logo=npm&color=CB3837)](https://www.npmjs.com/package/mikrotik-skill)
+[![GitHub Packages](https://img.shields.io/badge/GitHub%20Packages-@ardianryan/mikrotik--skill-2088FF?logo=github)](https://github.com/users/ardianryan/packages/npm/package/mikrotik-skill)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue.svg)](https://www.typescriptlang.org/)
 [![Target](https://img.shields.io/badge/RouterOS-v7.x_Only-red.svg)](https://mikrotik.com/)
@@ -20,8 +22,8 @@
 [![Verified Hardware: hEX Refresh](https://img.shields.io/badge/Tested-hEX%20Refresh%20(E50UG)%20%7C%20v7.23.7-059669?logo=mikrotik&logoColor=white)](https://mikrotik.com)
 [![Verified Hardware: RB1100AHx4](https://img.shields.io/badge/Tested-RB1100AHx4%20%7C%20v7.23.7-059669?logo=mikrotik&logoColor=white)](https://mikrotik.com)
 
-> **Personal Daily Productivity & Network Automation Toolkit**  
-> Authored by **Ardian Ryan** (<me@ardianryan.com>) to streamline network operations, multi-WAN load balancing, automated security auditing, and safe rule deployment on MikroTik RouterOS v7 devices.
+> **Enterprise-Grade NetDevOps CLI, Model Context Protocol (MCP) Server, and AI Engineering Suite for MikroTik RouterOS v7**  
+> Authored by **Ardian Ryan** (<me@ardianryan.com>) to streamline network operations, multi-WAN load balancing, automated security auditing, captive portal generation, and safe rule deployment on physical RouterOS v7 hardware.
 
 ---
 
@@ -50,9 +52,14 @@ To maintain network reliability, the toolkit incorporates built-in guardrails:
 
 ## Overview
 
-Managing MikroTik routers in multi-WAN environments often involves repetitive `.rsc` exports, delicate Mangle ordering, and the constant risk of lockout. 
+Managing MikroTik routers in multi-WAN environments often involves repetitive `.rsc` exports, delicate Mangle ordering, and the constant risk of lockout.
 
-**MikroTik Skill & CLI Toolkit** is a modular, type-safe automation suite designed to solve this. It provides both a powerful terminal CLI (`mtik`) and a Model Context Protocol (MCP) server (`mtik-mcp`) allowing AI coding assistants (such as Antigravity, Cursor, and Claude Desktop) to audit, inspect, and safely configure RouterOS v7 infrastructure with zero hallucinations.
+**MikroTik NetDevOps Toolkit & MCP Server** is a comprehensive, production-grade automation ecosystem engineered for both human engineers and AI coding assistants:
+
+1. **Autonomous CLI Toolkit (`mtik`)**: Execute audits, monitor bandwidth, inspect fleet inventory, manage PoE, and generate configurations directly from terminal or CI/CD pipelines. Available zero-install via `npx mikrotik-skill`.
+2. **Model Context Protocol (MCP) Server (`mtik-mcp`)**: Native stdio and remote SSE server equipping AI coding assistants (Antigravity, Cursor, Windsurf, Claude Desktop, VS Code) with 22 validated tools to safely inspect and automate RouterOS v7 without hallucinations.
+3. **Interactive Web Workbench & REST Gateway**: Dark-titanium browser studio featuring an interactive Captive Hotspot Portal Studio, WireGuard QR Code Generator, Asymmetric PCC Calculator, and OpenAPI 3.1.0 serverless endpoints.
+4. **Certified AI Knowledge Engine (The Brain)**: 20+ specialized runbooks, hardware architecture matrices, and kernel rules residing in `.agents/skills/mikrotik/` providing exact grounding for AI pair programming.
 
 ---
 
@@ -177,21 +184,41 @@ This toolkit is continuously validated against physical MikroTik RouterOS v7 har
 
 ### 1. Requirements
 - Node.js >= 20.0.0
-- MikroTik Router running RouterOS v7.1 or higher
+- MikroTik Router running RouterOS v7.1 or higher (or use offline knowledge generators)
 
 ### 2. Quickstart
+
+#### Option A: Zero-Install Execution (via npx)
+Run any command or launch local tools instantly without cloning:
 ```bash
-# Clone the repository
+# Display router status & health
+npx mikrotik-skill status
+
+# Generate high-conversion Captive Hotspot Portal
+npx mikrotik-skill hotspot --type all-in-one --org "Enterprise Guest"
+
+# Generate asymmetric PCC load balancing script
+npx mikrotik-skill pcc --wan "ISP1:100,ISP2:50"
+
+# Boot stdio MCP server for IDEs
+npx mikrotik-skill mcp
+```
+
+#### Option B: Global Terminal Installation
+```bash
+npm install -g mikrotik-skill
+
+# Run anywhere with short command `mtik`
+mtik status
+mtik audit
+```
+
+#### Option C: Build from Source
+```bash
 git clone https://github.com/ardianryan/MikroTik-Skill.git
 cd MikroTik-Skill
-
-# Install dependencies
 npm install
-
-# Build TypeScript
 npm run build
-
-# Link CLI globally to your terminal
 npm link
 ```
 
@@ -332,8 +359,39 @@ mtik test
 # Display system health, CPU utilization, and lease counters
 mtik status
 
-# Run automated 7-Pillar Security Audit
+# Run automated 10-Pillar Security Audit
 mtik audit
+
+# Generate high-conversion Captive Hotspot Portal bundle
+mtik hotspot --type all-in-one --org "Guest Lounge" --currency "IDR"
+
+# Provision Curve25519 WireGuard client with terminal QR code
+mtik wireguard --client-ip 10.10.0.2/32 --listen-port 13231
+
+# Calculate asymmetric Multi-WAN PCC load balancing script
+mtik pcc --wan "ISP1:100,ISP2:50" --lan "bridge-lan"
+
+# Lint RouterOS configuration script (.rsc) for security and syntax risks
+mtik lint -f /path/to/backup.rsc
+
+# Transpile legacy RouterOS v6 routing filters to modern v7 syntax
+mtik migrate-filter -f /path/to/v6-filters.rsc
+
+# Fleet Inventory: list and manage multi-router profiles
+mtik devices
+mtik inventory
+
+# Power-cycle PoE port and inspect real-time wattage / voltage
+mtik poe ether5 --cycle
+
+# Real-time log triage and security forensic inspection
+mtik logs --topic firewall --limit 50
+
+# Deploy CAKE SQM anti-bufferbloat queues
+mtik queue --interface ether1 --upload 50M --download 100M
+
+# Inspect connected wireless clients and signal telemetry
+mtik wifi --clients
 
 # List firewall mangle rules with index & hierarchy breakdown
 mtik mangle
@@ -357,9 +415,8 @@ mtik container --restart 0
 # Inspect DNS adblocker feed lists
 mtik adlist
 
-# Manage multi-router profiles securely
-mtik profile --save homelab
-mtik profile
+# Automatically install MCP server configuration into your local IDEs
+mtik mcp install
 
 # Generate certified templates across all 10 MikroTik Certification tracks
 mtik template --list
@@ -380,17 +437,18 @@ mtik prompt -o mikrotik-system-prompt.md
 
 ## AI Agent Integration (Model Context Protocol - MCP)
 
-This repository includes a stdio MCP server (`mtik-mcp`) allowing AI coding assistants to invoke RouterOS tools safely.
+This repository includes a production Model Context Protocol (MCP) server (`mtik-mcp`) allowing AI coding assistants to inspect, audit, and configure RouterOS v7 infrastructure safely.
 
-### Cursor / Claude Desktop / Antigravity Config
+### Cursor / Claude Desktop / Antigravity / Windsurf Config
+
+#### Option A: Zero-Install NPX (Recommended)
 Add this entry to your `mcp_config.json` or `claude_desktop_config.json`:
-
 ```json
 {
   "mcpServers": {
     "mikrotik": {
-      "command": "node",
-      "args": ["./dist/mcp/index.js"],
+      "command": "npx",
+      "args": ["-y", "mikrotik-skill", "mcp"],
       "env": {
         "ROUTEROS_HOST": "192.168.88.1",
         "ROUTEROS_USER": "admin",
@@ -403,20 +461,50 @@ Add this entry to your `mcp_config.json` or `claude_desktop_config.json`:
 }
 ```
 
-### Available Tools:
-- `mikrotik_test_connection`: Test connectivity & transport detection.
-- `mikrotik_get_system_status`: Inspect CPU, memory, uptime, and interfaces.
-- `mikrotik_audit_security`: Execute 10-Pillar Security Audit.
-- `mikrotik_list_mangle`: View mangle rules with hierarchy analysis.
-- `mikrotik_force_routing`: Assign client IP to routing table with dry-run and watchdog protection.
-- `mikrotik_manage_dhcp_lease`: List and add static DHCP leases.
-- `mikrotik_export_sanitized_config`: Export anonymized configuration for safe AI analysis.
-- `mikrotik_manage_container`: List and restart Docker containers.
-- `mikrotik_get_adlist_status`: Query active DNS adblocker feeds.
-- `mikrotik_generate_template`: Generate certified configurations for all 10 MikroTik tracks (MTCNA, MTCRE, MTCINE, MTCSWE, MTCTCE, MTCSE, MTCIPv6E, MTCUME, MTCEWE, MTCWE).
-- `mikrotik_execute_command`: Atomically execute arbitrary RouterOS CLI commands or scripts.
-- `mikrotik_rest_query`: Query RouterOS v7 `/rest/<endpoint>` with GET, POST, PUT, PATCH, DELETE.
-- `mikrotik_get_chat_prompt`: Retrieve senior engineer prompt for ChatGPT and Claude.ai.
+#### Option B: Local Repository Build
+```json
+{
+  "mcpServers": {
+    "mikrotik": {
+      "command": "node",
+      "args": ["./dist/mcp/index.js"],
+      "env": {
+        "ROUTEROS_HOST": "192.168.88.1",
+        "ROUTEROS_USER": "admin",
+        "ROUTEROS_PASSWORD": "your_secure_password"
+      }
+    }
+  }
+}
+```
+
+### Complete MCP Tools Registry (22 Tools):
+
+| Tool | Category | Description |
+| :--- | :--- | :--- |
+| `mikrotik_test_connection` | Diagnostic | Test connectivity and detect active transport (REST vs Binary API). |
+| `mikrotik_get_system_status` | Telemetry | Inspect CPU load, memory, disk, uptime, and interface states. |
+| `mikrotik_audit_security` | Security | Run comprehensive 10-Pillar Security Audit with actionable findings. |
+| `mikrotik_list_mangle` | Traffic Control | View firewall mangle rules with strict hierarchy ordering analysis. |
+| `mikrotik_force_routing` | Routing | Assign client IP to routing table with visual dry-run and 30s watchdog. |
+| `mikrotik_calculate_pcc` | Traffic Control | Compute mathematically sound PCC mangle and routing rules for asymmetric WANs. |
+| `mikrotik_provision_wireguard` | VPN | Generate Curve25519 keypairs, client configs, router commands, and ASCII QR codes. |
+| `mikrotik_generate_hotspot_portal` | Hotspot | Generate mobile-first captive portal bundles (voucher, user/pass, social, trial, QRIS). |
+| `mikrotik_migrate_filter` | Migration | Transpile legacy RouterOS v6 routing filters into v7 syntax. |
+| `mikrotik_lint_config` | Validation | Deterministic linter detecting plaintext secrets, open DNS, and inverted rules. |
+| `mikrotik_manage_dhcp_lease` | IP Services | Query and add static DHCP leases with MAC reservations. |
+| `mikrotik_export_sanitized_config` | Safety | Export anonymized configuration (redacting MACs, serials, passwords) for AI analysis. |
+| `mikrotik_manage_container` | Microservices | Inspect and restart Docker container instances on RouterOS hardware. |
+| `mikrotik_get_adlist_status` | DNS Security | Query active DNS adblocker feed lists and block counters. |
+| `mikrotik_generate_template` | Knowledge | Generate certified configurations across all 10 MikroTik Certification tracks. |
+| `mikrotik_list_devices` | Fleet | List and query multi-router profiles from YAML/JSON fleet inventory. |
+| `mikrotik_get_logs` | Forensics | Query live router system logs with topic-specific filtering (`firewall`, `warning`, etc.). |
+| `mikrotik_manage_poe` | Hardware | Inspect PoE wattage/voltage and power-cycle connected appliances. |
+| `mikrotik_manage_queues` | QoS | Deploy and manage low-latency CAKE / FQ-CoDel anti-bufferbloat queues. |
+| `mikrotik_get_wireless_clients` | Wireless | Query connected Wi-Fi clients, signal strength (RSSI), and PHY rates. |
+| `mikrotik_execute_command` | Execution | Atomically execute arbitrary RouterOS CLI commands. |
+| `mikrotik_rest_query` | REST Client | Query RouterOS v7 `/rest/<endpoint>` with GET, POST, PUT, PATCH, DELETE. |
+| `mikrotik_get_chat_prompt` | Knowledge | Retrieve senior network engineer system prompt for ChatGPT and Claude.ai. |
 
 ---
 

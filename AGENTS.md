@@ -1,6 +1,6 @@
-# AI Agent Guidelines & Repository Directives
+# AI Agent Guidelines & Repository Directives — MikroTik NetDevOps Suite
 
-This repository is a production-grade networking automation toolkit for MikroTik RouterOS v7. All AI coding assistants working in this repository must adhere strictly to the engineering rules below.
+This repository is a production-grade NetDevOps automation toolkit, Model Context Protocol (MCP) server, and AI engineering suite for MikroTik RouterOS v7. All AI coding assistants working in this repository must adhere strictly to the engineering rules below.
 
 ## Code and Architecture Directives
 1. **Clean Architecture:** Maintain strict separation of concerns between `client/` (I/O transport), `config/` (credentials), `safety/` (validation, audit, diff), and `cli/`/`mcp/` (interfaces).

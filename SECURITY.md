@@ -1,4 +1,4 @@
-# Security Policy
+# Security Policy — MikroTik NetDevOps Toolkit & MCP Server
 
 ## Reporting a Vulnerability
 
