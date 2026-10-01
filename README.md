@@ -65,6 +65,8 @@ Managing MikroTik routers in multi-WAN environments often involves repetitive `.
 
 ## Key Features
 
+- **Interactive Fullscreen TUI Dashboard (`mtik tui` / `mtik`):**
+  - Fullscreen terminal interface with dual-pane layout: live hardware gauges (E60iUGS/ARM/MMIPS CPU & Memory), interface overview, and step-by-step interactive configuration wizards (Multi-WAN PCC, WireGuard QR, Hotspot Portals, and 10-Pillar Security Audit). Runs automatically in interactive terminals!
 - **Dual-Engine Connection:**
   - **Primary:** High-speed RouterOS v7 native REST API (`/rest`, HTTPS/HTTP) with structured JSON responses and self-signed certificate tolerance.
   - **Automatic Fallback:** Seamless fallback to RouterOS native binary API socket (Port 8728 / 8729 SSL) if WebFig or REST is disabled.
@@ -353,6 +355,10 @@ claude mcp add --transport sse mikrotik https://mikrotik-skill.vercel.app/sse
 ## CLI Usage (`mtik`)
 
 ```bash
+# Launch interactive Fullscreen TUI Dashboard & Wizards (or run `mtik` directly)
+mtik tui
+mtik ui
+
 # Verify connectivity and active transport (REST vs Binary API)
 mtik test
 

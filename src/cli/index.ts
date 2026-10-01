@@ -28,6 +28,7 @@ import { RouterOsLinter } from '../safety/linter.js';
 import { HotspotPortalGenerator, type HotspotAuthModel } from '../safety/hotspot-generator.js';
 import { MikroTikHttpServer } from '../server/http.js';
 import { OpenApiGenerator } from '../server/openapi.js';
+import { runTui } from '../tui/index.js';
 import type { InterfaceTrafficMonitor } from '../client/types.js';
 
 const program = new Command();
@@ -1111,4 +1112,26 @@ program
     }
   });
 
-program.parse(process.argv);
+program
+  .command('tui')
+  .alias('ui')
+  .description('Launch interactive Fullscreen Terminal User Interface (TUI) Dashboard & Wizards.')
+  .option('-d, --device <name>', 'Target router device from inventory')
+  .action(async (opts) => {
+    try {
+      await runTui({ device: opts.device });
+    } catch (err) {
+      console.error(chalk.red(`TUI Error: ${err instanceof Error ? err.message : String(err)}`));
+      process.exitCode = 1;
+    }
+  });
+
+// Launch TUI by default when run in interactive terminal without arguments
+if (process.argv.length <= 2 && process.stdin.isTTY) {
+  runTui().catch((err) => {
+    console.error(chalk.red(`TUI Error: ${err instanceof Error ? err.message : String(err)}`));
+    process.exit(1);
+  });
+} else {
+  program.parse(process.argv);
+}
