@@ -46,6 +46,7 @@ export class RouterOsRestClient {
       const options: RequestInit = {
         method,
         headers,
+        signal: AbortSignal.timeout(6000),
       };
 
       if (body && ['POST', 'PUT', 'PATCH'].includes(method)) {
@@ -59,6 +60,9 @@ export class RouterOsRestClient {
       const response = await fetch(url, options);
 
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('401 Unauthorized: Username atau Password Salah');
+        }
         const errorText = await response.text();
         throw new Error(`RouterOS REST Error (${response.status}): ${errorText}`);
       }

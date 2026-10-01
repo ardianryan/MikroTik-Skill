@@ -59,6 +59,7 @@ interface AddRouterForm {
   user: string;
   password: string;
   model: string;
+  preferBinary: boolean;
 }
 
 /**
@@ -70,6 +71,13 @@ export class TuiDashboard {
   private selectedNavIndex = 0;
   private isRunning = true;
   private focus: 'nav' | 'content' | 'wizard' = 'nav';
+
+  // Top-Level View State: 'gateway' (Login / Router Selector) vs 'dashboard' (Full Sidebar TUI)
+  private currentView: 'gateway' | 'dashboard' = 'gateway';
+  private gatewayMode: 'select' | 'add' = 'select';
+  private gatewayError: string | null = null;
+  private isConnecting = false;
+  private connectingTargetName = '';
 
   // Multi-Router Fleet State
   private fleetStore: FleetStore;
@@ -83,6 +91,7 @@ export class TuiDashboard {
     user: 'admin',
     password: '',
     model: 'E60iUGS',
+    preferBinary: false,
   };
 
   // Live Router Telemetry
@@ -109,6 +118,8 @@ export class TuiDashboard {
 
     const fallbackConfig = loadRouterConfig();
     if (options.device) {
+      // If a specific device is passed (e.g. `mtik my-router`), bypass Gateway and open Full Dashboard directly!
+      this.currentView = 'dashboard';
       const dev = getFleetDevice(options.device);
       if (dev) {
         setActiveFleetDevice(dev.name);
@@ -123,28 +134,15 @@ export class TuiDashboard {
           : fallbackConfig;
       }
     } else {
+      // If no device argument is given, ALWAYS start in Gateway / Login view!
+      this.currentView = 'gateway';
+      this.gatewayMode = this.fleetStore.devices.length === 0 ? 'add' : 'select';
       const active = getActiveFleetDevice();
       this.routerConfig = active
         ? fleetDeviceToRouterConfig(active)
         : this.fleetStore.devices[0]
         ? fleetDeviceToRouterConfig(this.fleetStore.devices[0])
         : fallbackConfig;
-    }
-
-    // When no specific device argument is given, start in Fleet & Multi-Router tab to select or add router
-    if (!options.device) {
-      this.activeTab = 'fleet';
-      this.selectedNavIndex = NAV_ITEMS.findIndex((n) => n.id === 'fleet');
-      this.focus = 'content';
-    }
-
-    // First-run experience: if fleet is empty, launch Add-Router Wizard immediately
-    if (this.fleetStore.devices.length === 0) {
-      this.activeTab = 'fleet';
-      this.selectedNavIndex = NAV_ITEMS.findIndex((n) => n.id === 'fleet');
-      this.focus = 'wizard';
-      this.wizardMode = 'add-router';
-      this.addRouterField = 0;
     }
   }
 
@@ -159,8 +157,8 @@ export class TuiDashboard {
     // Initial render
     this.render();
 
-    // Only fetch live telemetry if we have an active device and we are not in add-router wizard
-    if (this.fleetStore.devices.length > 0 && this.wizardMode !== 'add-router') {
+    // Only fetch live telemetry if we started in the dashboard view
+    if (this.currentView === 'dashboard' && this.fleetStore.devices.length > 0) {
       this.fetchSystemTelemetry();
     }
 
@@ -210,11 +208,280 @@ export class TuiDashboard {
     }
   }
 
+  private async attemptConnectDevice(dev: { name: string; host: string; port: number; user: string; model?: string; preferBinary?: boolean }): Promise<void> {
+    this.isConnecting = true;
+    this.connectingTargetName = `${dev.name} (${dev.host}:${dev.port})`;
+    this.gatewayError = null;
+    this.render();
+
+    const config = fleetDeviceToRouterConfig(dev as any);
+    const conn = new ConnectionManager(config);
+
+    try {
+      const test = await conn.testConnection();
+      if (test.successful) {
+        setActiveFleetDevice(dev.name);
+        this.fleetStore = getFleetStore();
+        this.routerConfig = config;
+        this.connectionStatus = 'connected';
+        this.routerOsVersion = test.routerOsVersion || 'v7.x';
+        this.boardModel = test.boardModel || dev.model || 'MikroTik Hardware';
+        this.uptime = test.uptime || '-';
+        this.isConnecting = false;
+        // Enter Full Dashboard!
+        this.currentView = 'dashboard';
+        this.activeTab = 'telemetry';
+        this.selectedNavIndex = NAV_ITEMS.findIndex((n) => n.id === 'telemetry');
+        this.focus = 'content';
+        this.fetchSystemTelemetry();
+      } else {
+        this.isConnecting = false;
+        const rawErr = test.error || 'Connection failed';
+        if (
+          rawErr.includes('401') ||
+          rawErr.toLowerCase().includes('unauthorized') ||
+          rawErr.toLowerCase().includes('password')
+        ) {
+          this.gatewayError = `❌ Autentikasi Gagal: Username atau Password salah untuk router ${dev.host}.`;
+        } else if (rawErr.toLowerCase().includes('timeout') || rawErr.toLowerCase().includes('timed out')) {
+          this.gatewayError = `❌ Timeout (Port ${dev.port}): Router ${dev.host} tidak merespons. Periksa koneksi IP atau buka port di MikroTik (/ip service enable ${dev.preferBinary ? 'api' : 'www'}).`;
+        } else if (rawErr.toLowerCase().includes('refused') || rawErr.toLowerCase().includes('econnrefused')) {
+          this.gatewayError = `❌ Koneksi Ditolak: Port ${dev.port} ditutup di router ${dev.host}. Buka service via terminal MikroTik (/ip service enable ${dev.preferBinary ? 'api' : 'www'}).`;
+        } else {
+          this.gatewayError = `❌ Gagal terhubung ke ${dev.host}:${dev.port}: ${rawErr}`;
+        }
+        this.render();
+      }
+    } catch (err) {
+      this.isConnecting = false;
+      this.gatewayError = `❌ Error: ${err instanceof Error ? err.message : String(err)}`;
+      this.render();
+    } finally {
+      await conn.close();
+    }
+  }
+
+  private async submitAddRouterForm(): Promise<void> {
+    const name = (this.addRouterForm.name || `router-${Date.now().toString(36)}`).trim();
+    const host = (this.addRouterForm.host || '192.168.88.1').trim();
+    const preferBinary = Boolean(this.addRouterForm.preferBinary);
+    const port = parseInt(this.addRouterForm.port, 10) || (preferBinary ? 8728 : 443);
+    const user = (this.addRouterForm.user || 'admin').trim();
+    const password = this.addRouterForm.password;
+    const model = (this.addRouterForm.model || 'MikroTik E60iUGS').trim();
+
+    const newDev = addFleetDevice({
+      name,
+      host,
+      port,
+      user,
+      password,
+      model,
+      preferBinary,
+      useSsl: !preferBinary && (port === 443 || port === 8443),
+    });
+
+    this.fleetStore = getFleetStore();
+    await this.attemptConnectDevice(newDev);
+  }
+
+  private handleGatewayKey(key: { name: string; sequence: string; ctrl?: boolean; shift?: boolean }): void {
+    if (this.isConnecting) return; // Prevent input while connection is testing
+
+    const keyName = key.name || '';
+    const devices = this.fleetStore.devices;
+
+    if (this.gatewayMode === 'select') {
+      if (keyName === 'q') {
+        this.isRunning = false;
+        return;
+      }
+
+      // Select previous device
+      if (keyName === 'up' || keyName === 'k') {
+        if (devices.length > 0) {
+          this.selectedFleetIndex = (this.selectedFleetIndex - 1 + devices.length) % devices.length;
+          this.gatewayError = null;
+          this.render();
+        }
+        return;
+      }
+
+      // Select next device
+      if (keyName === 'down' || keyName === 'j') {
+        if (devices.length > 0) {
+          this.selectedFleetIndex = (this.selectedFleetIndex + 1) % devices.length;
+          this.gatewayError = null;
+          this.render();
+        }
+        return;
+      }
+
+      // Connect to selected device
+      if (keyName === 'return' || keyName === 'enter' || keyName === 'space') {
+        const targetDev = devices[this.selectedFleetIndex];
+        if (targetDev) {
+          void this.attemptConnectDevice(targetDev);
+        }
+        return;
+      }
+
+      // Switch to Add Router mode
+      if (keyName === 'a' || keyName === 'n' || keyName === '2') {
+        this.gatewayMode = 'add';
+        this.gatewayError = null;
+        this.addRouterField = 0;
+        this.addRouterForm = {
+          name: `router-${(devices.length + 1).toString()}`,
+          host: '192.168.88.1',
+          port: '443',
+          user: 'admin',
+          password: '',
+          model: 'E60iUGS',
+          preferBinary: false,
+        };
+        this.render();
+        return;
+      }
+
+      // Delete device from fleet
+      if (keyName === 'd') {
+        const targetDev = devices[this.selectedFleetIndex];
+        if (targetDev && devices.length > 0) {
+          removeFleetDevice(targetDev.name);
+          this.fleetStore = getFleetStore();
+          this.selectedFleetIndex = Math.max(0, this.selectedFleetIndex - 1);
+          if (this.fleetStore.devices.length === 0) {
+            this.gatewayMode = 'add';
+          }
+          this.render();
+        }
+        return;
+      }
+    } else if (this.gatewayMode === 'add') {
+      // Escape returns to select mode if devices exist
+      if (keyName === 'escape') {
+        if (devices.length > 0) {
+          this.gatewayMode = 'select';
+          this.gatewayError = null;
+          this.render();
+        }
+        return;
+      }
+
+      // Key '1' switches to select mode
+      if (keyName === '1' && (this.addRouterField === 0 || key.ctrl)) {
+        if (devices.length > 0) {
+          this.gatewayMode = 'select';
+          this.gatewayError = null;
+          this.render();
+          return;
+        }
+      }
+
+      const fieldKeys: Array<keyof AddRouterForm> = [
+        'name',
+        'host',
+        'preferBinary',
+        'port',
+        'user',
+        'password',
+        'model',
+      ];
+      const currentKey = fieldKeys[this.addRouterField] || 'name';
+
+      // Toggle Protocol on space
+      if (currentKey === 'preferBinary') {
+        if (keyName === 'space' || keyName === 'left' || keyName === 'right') {
+          this.addRouterForm.preferBinary = !this.addRouterForm.preferBinary;
+          this.addRouterForm.port = this.addRouterForm.preferBinary ? '8728' : '443';
+          this.render();
+          return;
+        }
+      }
+
+      // Enter key
+      if (keyName === 'return' || keyName === 'enter') {
+        if (this.addRouterField < fieldKeys.length - 1) {
+          this.addRouterField++;
+          this.render();
+        } else {
+          // Submit form
+          void this.submitAddRouterForm();
+        }
+        return;
+      }
+
+      // Up navigation
+      if (keyName === 'up' && this.addRouterField > 0) {
+        this.addRouterField--;
+        this.render();
+        return;
+      }
+
+      // Down navigation
+      if (keyName === 'down' && this.addRouterField < fieldKeys.length - 1) {
+        this.addRouterField++;
+        this.render();
+        return;
+      }
+
+      // Tab navigation
+      if (keyName === 'tab') {
+        if (key.shift || key.sequence === '\x1b[Z') {
+          this.addRouterField = (this.addRouterField - 1 + fieldKeys.length) % fieldKeys.length;
+        } else {
+          this.addRouterField = (this.addRouterField + 1) % fieldKeys.length;
+        }
+        this.render();
+        return;
+      }
+
+      // Backspace
+      if (keyName === 'backspace' && currentKey !== 'preferBinary') {
+        const val = String((this.addRouterForm as any)[currentKey] || '');
+        (this.addRouterForm as any)[currentKey] = val.slice(0, -1);
+        this.render();
+        return;
+      }
+
+      // Printable character typing
+      if (
+        currentKey !== 'preferBinary' &&
+        key.sequence &&
+        key.sequence.length === 1 &&
+        !keyName.startsWith('f') &&
+        keyName !== 'tab' &&
+        keyName !== 'enter' &&
+        keyName !== 'return' &&
+        keyName !== 'escape'
+      ) {
+        (this.addRouterForm as any)[currentKey] = String((this.addRouterForm as any)[currentKey] || '') + key.sequence;
+        this.render();
+      }
+    }
+  }
+
   private setupKeyBindings(): void {
     this.screen.onKey((key) => {
-      // Quit
+      // If currently on Gateway screen, route all keystrokes to Gateway handler!
+      if (this.currentView === 'gateway') {
+        this.handleGatewayKey(key);
+        return;
+      }
+
+      // Quit from Dashboard
       if (key.name === 'q' && this.focus !== 'wizard') {
         this.isRunning = false;
+        return;
+      }
+
+      // Switch Router / Logout back to Gateway screen
+      if ((key.name === 'l' || key.name === 'L') && this.focus !== 'wizard') {
+        this.currentView = 'gateway';
+        this.gatewayMode = this.fleetStore.devices.length === 0 ? 'add' : 'select';
+        this.gatewayError = null;
+        this.render();
         return;
       }
 
@@ -345,6 +612,7 @@ export class TuiDashboard {
         user: 'admin',
         password: '',
         model: 'E60iUGS',
+        preferBinary: false,
       };
       this.render();
     } else if (key.name === 'd') {
@@ -412,15 +680,24 @@ export class TuiDashboard {
       return;
     }
 
-    if (keyName === 'backspace') {
-      this.addRouterForm[currentKey] = this.addRouterForm[currentKey].slice(0, -1);
+    if (keyName === 'backspace' && typeof this.addRouterForm[currentKey] === 'string') {
+      (this.addRouterForm as any)[currentKey] = (this.addRouterForm[currentKey] as string).slice(0, -1);
       this.render();
       return;
     }
 
     // Printable character input (including dots, letters, numbers, symbols)
-    if (key.sequence && key.sequence.length === 1 && !keyName.startsWith('f') && keyName !== 'tab' && keyName !== 'enter' && keyName !== 'return' && keyName !== 'escape') {
-      this.addRouterForm[currentKey] += key.sequence;
+    if (
+      typeof this.addRouterForm[currentKey] === 'string' &&
+      key.sequence &&
+      key.sequence.length === 1 &&
+      !keyName.startsWith('f') &&
+      keyName !== 'tab' &&
+      keyName !== 'enter' &&
+      keyName !== 'return' &&
+      keyName !== 'escape'
+    ) {
+      (this.addRouterForm as any)[currentKey] += key.sequence;
       this.render();
     }
   }
@@ -523,6 +800,11 @@ export class TuiDashboard {
     const { rows, cols } = this.screen.getDimensions();
     this.screen.clear();
 
+    if (this.currentView === 'gateway') {
+      this.renderGateway(rows, cols);
+      return;
+    }
+
     const safeCfg = sanitizeConfig(this.routerConfig);
     const navWidth = Math.min(26, Math.floor(cols * 0.28));
     const contentWidth = cols - navWidth - 3;
@@ -539,6 +821,143 @@ export class TuiDashboard {
 
     // 4. Render Bottom Status Footer
     this.renderFooter(rows, cols);
+  }
+
+  private renderGateway(rows: number, cols: number): void {
+    const boxWidth = Math.min(84, Math.max(50, cols - 4));
+    const boxHeight = Math.min(24, Math.max(16, rows - 2));
+    const startRow = Math.max(2, Math.floor((rows - boxHeight) / 2));
+    const startCol = Math.max(2, Math.floor((cols - boxWidth) / 2));
+
+    const lines: string[] = [];
+
+    // Header title
+    const bannerTitle = ' MIKROTIK NETDEVOPS SUITE • ROUTER GATEWAY & LOGIN ';
+    lines.push(chalk.bold.cyan(bannerTitle));
+    lines.push(chalk.gray('─'.repeat(boxWidth - 4)));
+
+    // Mode tabs
+    const isSelect = this.gatewayMode === 'select';
+    const tab1 = isSelect
+      ? chalk.bgCyan.black.bold(' [1] PILIH ROUTER TERSIMPAN ')
+      : chalk.white(' [1] Pilih Router Tersimpan ');
+    const tab2 = !isSelect
+      ? chalk.bgCyan.black.bold(' [2] + TAMBAH ROUTER BARU ')
+      : chalk.white(' [2] + Tambah Router Baru ');
+    lines.push(`${tab1}   ${tab2}`);
+    lines.push('');
+
+    if (this.gatewayMode === 'select') {
+      lines.push(chalk.bold.white('DAFTAR ROUTER TERDAFTAR (FLEET):'));
+      lines.push(chalk.gray('Pilih router lalu tekan [Enter] untuk login & buka dashboard bersidebar.'));
+      lines.push('');
+
+      const devices = this.fleetStore.devices;
+      if (devices.length === 0) {
+        lines.push(chalk.yellow('  (Belum ada router tersimpan. Tekan [A] atau [2] untuk menambah router)'));
+        lines.push('');
+      } else {
+        devices.forEach((dev, idx) => {
+          const isSelected = idx === this.selectedFleetIndex;
+          const arrow = isSelected ? chalk.cyan.bold(' ▶ ') : '   ';
+          const namePart = padRight(dev.name, 16);
+          const hostPart = padRight(`${dev.host}:${dev.port}`, 18);
+          const userPart = padRight(dev.user, 10);
+          const typePart = padRight(dev.preferBinary ? 'API (8728)' : 'REST (443/80)', 14);
+          const modelPart = chalk.gray(`[${dev.model || 'MikroTik'}]`);
+
+          const lineContent = `${arrow}${namePart} ${hostPart} ${userPart} ${typePart} ${modelPart}`;
+          if (isSelected) {
+            lines.push(chalk.bgCyan.black(padRight(lineContent, boxWidth - 6)));
+          } else {
+            lines.push(chalk.white(lineContent));
+          }
+        });
+      }
+
+      // Connecting state or error message
+      lines.push('');
+      if (this.isConnecting) {
+        lines.push(chalk.bgYellow.black(` ⏳ Menghubungkan & mengautentikasi ke ${this.connectingTargetName}... Mohon tunggu. `));
+      } else if (this.gatewayError) {
+        lines.push(chalk.bgRed.white(` ${this.gatewayError} `));
+      } else {
+        lines.push('');
+      }
+
+      // Bottom instruction
+      lines.push('');
+      lines.push(chalk.gray('─'.repeat(boxWidth - 4)));
+      lines.push(
+        chalk.gray(
+          `${chalk.cyan('[↑/↓]')} Pilih  ${chalk.green('[Enter]')} Login & Buka Dashboard  ${chalk.yellow('[A]')} Tambah  ${chalk.red('[D]')} Hapus  ${chalk.magenta('[Q]')} Keluar`
+        )
+      );
+    } else {
+      // Add Router Form
+      lines.push(chalk.bold.white('ONBOARDING: MASUKKAN INFORMASI ROUTER BARU:'));
+      lines.push(chalk.gray('Isi data router. Tekan [Enter] untuk lanjut ke field berikutnya atau submit.'));
+      lines.push('');
+
+      const fields: Array<{ label: string; value: string; hint?: string }> = [
+        { label: 'Nama Label', value: this.addRouterForm.name || chalk.gray('(contoh: core-router)') },
+        { label: 'Host / IP', value: this.addRouterForm.host || chalk.gray('(contoh: 192.168.88.1)') },
+        {
+          label: 'Protocol / Mode',
+          value: this.addRouterForm.preferBinary
+            ? chalk.cyan.bold('Binary API Port 8728 (Native, Tanpa SSL)')
+            : chalk.cyan.bold('REST API Port 443/80 (HTTPS/HTTP)'),
+          hint: chalk.yellow('[Space untuk ganti]'),
+        },
+        { label: 'Port', value: this.addRouterForm.port },
+        { label: 'Username', value: this.addRouterForm.user },
+        {
+          label: 'Password',
+          value: this.addRouterForm.password
+            ? '•'.repeat(this.addRouterForm.password.length)
+            : chalk.gray('(kosongkan jika tanpa password)'),
+        },
+        { label: 'Model Hardware', value: this.addRouterForm.model },
+      ];
+
+      fields.forEach((f, idx) => {
+        const isCurrent = idx === this.addRouterField;
+        const pointer = isCurrent ? chalk.cyan.bold(' ▶ ') : '   ';
+        const labelStr = padRight(`${f.label}:`, 18);
+        const valBox = `[ ${f.value} ]`;
+        const hintStr = f.hint ? ` ${f.hint}` : '';
+        const lineStr = `${pointer}${chalk.bold(labelStr)} ${valBox}${hintStr}`;
+
+        if (isCurrent) {
+          lines.push(chalk.bgCyan.black(padRight(lineStr, boxWidth - 6)));
+        } else {
+          lines.push(chalk.white(lineStr));
+        }
+      });
+
+      lines.push('');
+      if (this.isConnecting) {
+        lines.push(chalk.bgYellow.black(` ⏳ Menguji koneksi & menyimpan router... Mohon tunggu. `));
+      } else if (this.gatewayError) {
+        lines.push(chalk.bgRed.white(` ${this.gatewayError} `));
+      } else {
+        lines.push('');
+      }
+
+      lines.push(chalk.gray('─'.repeat(boxWidth - 4)));
+      lines.push(
+        chalk.gray(
+          `${chalk.cyan('[Tab/↑/↓]')} Pindah Field  ${chalk.green('[Enter]')} Simpan & Connect  ${chalk.yellow('[Esc]')} Batal  ${chalk.magenta('[Q]')} Keluar`
+        )
+      );
+    }
+
+    this.screen.drawBox(startRow, startCol, boxHeight, boxWidth, {
+      title: 'ROUTER ONBOARDING & LOGIN GATEWAY',
+      borderColor: chalk.cyan,
+      focused: true,
+      lines,
+    });
   }
 
   private renderHeader(cols: number, host: string): void {
@@ -839,7 +1258,7 @@ export class TuiDashboard {
 
     fields.forEach((f, idx) => {
       const isFocused = idx === this.addRouterField;
-      const rawVal = this.addRouterForm[f.key];
+      const rawVal = String(this.addRouterForm[f.key] || '');
       const displayVal = f.isPassword ? '•'.repeat(rawVal.length) : rawVal;
 
       const cursor = isFocused ? chalk.cyan.bold(' ▶ ') : '   ';
@@ -897,11 +1316,12 @@ export class TuiDashboard {
     this.screen.moveTo(rows - 1, 1);
     const navHelp = chalk.cyan('[↑/↓/1-9] Navigate');
     const tabHelp = chalk.yellow('[Tab] Focus');
-    const actionHelp = chalk.green('[Enter/Space] Action/Wizard');
+    const actionHelp = chalk.green('[Enter] Action');
+    const switchHelp = chalk.magenta.bold('[l] Switch Router');
     const refreshHelp = chalk.blue('[r] Refresh');
-    const quitHelp = chalk.red('[q] Quit TUI');
+    const quitHelp = chalk.red('[q] Quit');
 
-    const footerText = ` ${navHelp}  ${tabHelp}  ${actionHelp}  ${refreshHelp}  ${quitHelp} `;
+    const footerText = ` ${navHelp}  ${tabHelp}  ${actionHelp}  ${switchHelp}  ${refreshHelp}  ${quitHelp} `;
     const paddedFooter = padRight(footerText, cols);
     this.screen.write(chalk.bgGray.black(paddedFooter));
   }
