@@ -1,8 +1,38 @@
 # Changelog
 
-All notable changes to the **MikroTik Skill** repository and automation toolkit will be documented in this file.
+All notable changes to the **MikroTik NetDevOps Suite & MCP Server** repository will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+---
+
+## [1.2.0] - 2026-10-01
+
+### Added
+- **Fullscreen Interactive Terminal User Interface (TUI) Dashboard & Wizards:**
+  - Implemented zero-dependency ANSI alternate screen buffer manager (`src/tui/screen.ts`) with graceful signal handling (`SIGINT`, `SIGTERM`, `exit`) and terminal state restoration.
+  - Dual-pane layout featuring 9-category left sidebar navigation (`System Telemetry`, `10-Pillar Audit`, `Multi-WAN PCC`, `WireGuard Studio`, `Hotspot Studio`, `Traffic Monitor`, `PoE & Fleet`, `Config Linter`, and `Profiles & MCP`).
+  - Interactive terminal configuration wizards:
+    - **Multi-WAN PCC Calculator**: Step-by-step ratio selector generating certified RouterOS v7 Mangle & FIB rules.
+    - **WireGuard Provisioning Studio**: Instant Curve25519 x25519 keypair generation with client `.conf`, router commands, and ASCII QR code.
+    - **Captive Hotspot Studio**: 5-in-1 authentication model selector generating HTML5 bundles and walled garden rules.
+    - **10-Pillar Security Audit**: One-button interactive audit evaluating live router security posture with severity badges (`CRITICAL`, `WARN`, `PASS`).
+  - Visual resource gauges: Real-time ASCII progress meters (`[██████░░░░]`) for CPU load and RAM utilization.
+  - Interactive CLI trigger: `mtik tui` / `mtik ui`, with automatic TUI launch when invoking `mtik` without arguments in an interactive TTY.
+  - Comprehensive TUI test suite in `test/tui.test.ts` bringing total test coverage to **73 passing tests** across 15 test suites.
+
+### Changed
+- **Suite-Wide Rebranding to NetDevOps Toolkit & MCP Server:**
+  - Elevated repository positioning from a passive "skill" to a production **NetDevOps Automation Toolkit, MCP Server, and AI Engineering Suite**.
+  - Repositioned `.agents/skills/mikrotik/SKILL.md` as **The Brain** (*AI Knowledge & Engineering Engine*).
+  - Updated documentation across `README.md`, `package.json`, `AGENTS.md`, `CONTRIBUTING.md`, `SECURITY.md`, and `public/index.html`.
+  - Expanded complete MCP tools table in `README.md` to cover all 22 active tools.
+- **Hardware Architecture & Compatibility Matrix Accuracy:**
+  - Separated new **MikroTik hEX S Refresh (`E60iUGS`)** (ARM 32-bit, MediaTek EN7562CT Dual-Core 950 MHz, 512MB RAM, 128MB NAND) from legacy **hEX S (`RB760iGS`)** (MMIPS, MT7621A).
+  - Documented E60iUGS port layout (ether1 direct CPU vs ether2-5 switch chip HW offload) and `arm32v5` instruction requirements for container images.
+- **CI/CD & Actions Workflows:**
+  - Automated dependency upgrades: `actions/checkout@v7`, `actions/setup-node@v7`, `softprops/action-gh-release@v3`.
+  - Configured dual-registry publishing supporting both `npmjs.com` (`npx mikrotik-skill`) and GitHub Packages (`@ardianryan/mikrotik-skill`).
 
 ---
 

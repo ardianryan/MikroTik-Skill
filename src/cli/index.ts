@@ -36,7 +36,7 @@ const program = new Command();
 program
   .name('mtik')
   .description('MikroTik RouterOS v7 Production Automation & Management CLI')
-  .version('1.1.2');
+  .version('1.2.0');
 
 program
   .command('test')

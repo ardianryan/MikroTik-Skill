@@ -339,7 +339,7 @@ export class TuiDashboard {
   }
 
   private renderHeader(cols: number, host: string): void {
-    const title = ' MikroTik NetDevOps Suite v1.1.2 ';
+    const title = ' MikroTik NetDevOps Suite v1.2.0 ';
     const connBadge =
       this.connectionStatus === 'connected'
         ? chalk.bgGreen.black(' ONLINE ')
