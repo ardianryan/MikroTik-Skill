@@ -2,7 +2,7 @@ import chalk from 'chalk';
 import { TerminalScreen } from './screen.js';
 import { truncate, padRight, renderGauge, formatBytes } from './utils.js';
 import { ConnectionManager } from '../client/connection-manager.js';
-import { sanitizeConfig, listProfiles } from '../config/profile.js';
+import { sanitizeConfig, listProfiles, loadRouterConfig } from '../config/profile.js';
 import {
   getFleetStore,
   addFleetDevice,
@@ -107,6 +107,7 @@ export class TuiDashboard {
     this.screen = new TerminalScreen();
     this.fleetStore = getFleetStore();
 
+    const fallbackConfig = loadRouterConfig();
     if (options.device) {
       const dev = getFleetDevice(options.device);
       if (dev) {
@@ -115,11 +116,19 @@ export class TuiDashboard {
         this.routerConfig = fleetDeviceToRouterConfig(dev);
       } else {
         const active = getActiveFleetDevice();
-        this.routerConfig = active ? fleetDeviceToRouterConfig(active) : fleetDeviceToRouterConfig(this.fleetStore.devices[0]!);
+        this.routerConfig = active
+          ? fleetDeviceToRouterConfig(active)
+          : this.fleetStore.devices[0]
+          ? fleetDeviceToRouterConfig(this.fleetStore.devices[0])
+          : fallbackConfig;
       }
     } else {
       const active = getActiveFleetDevice();
-      this.routerConfig = active ? fleetDeviceToRouterConfig(active) : fleetDeviceToRouterConfig(this.fleetStore.devices[0]!);
+      this.routerConfig = active
+        ? fleetDeviceToRouterConfig(active)
+        : this.fleetStore.devices[0]
+        ? fleetDeviceToRouterConfig(this.fleetStore.devices[0])
+        : fallbackConfig;
     }
 
     // When no specific device argument is given, start in Fleet & Multi-Router tab to select or add router
@@ -541,9 +550,13 @@ export class TuiDashboard {
         ? chalk.bgYellow.black(' CONNECTING ')
         : chalk.bgRed.white(' OFFLINE ');
 
-    const activeRouterName = chalk.bold.cyan(`[${this.fleetStore.activeDevice.toUpperCase()}]`);
+    const activeRouterName = this.fleetStore.activeDevice
+      ? chalk.bold.cyan(`[${this.fleetStore.activeDevice.toUpperCase()}]`)
+      : chalk.bold.yellow('[NO ROUTER CONFIGURED]');
     const hardwareBadge = chalk.gray(`| HW: ${chalk.cyan(this.boardModel)} | OS: ${chalk.cyan(this.routerOsVersion)}`);
-    const targetBadge = chalk.gray(`| Target: ${activeRouterName} ${chalk.white(host)}`);
+    const targetBadge = this.fleetStore.activeDevice
+      ? chalk.gray(`| Target: ${activeRouterName} ${chalk.white(host)}`)
+      : chalk.gray(`| Target: ${activeRouterName}`);
 
     this.screen.moveTo(1, 1);
     this.screen.drawBox(1, 1, 3, cols, {
