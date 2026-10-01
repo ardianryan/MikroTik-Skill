@@ -2,7 +2,17 @@ import chalk from 'chalk';
 import { TerminalScreen } from './screen.js';
 import { truncate, padRight, renderGauge, formatBytes } from './utils.js';
 import { ConnectionManager } from '../client/connection-manager.js';
-import { loadRouterConfig, sanitizeConfig, listProfiles, listAllDevices } from '../config/profile.js';
+import { sanitizeConfig, listProfiles } from '../config/profile.js';
+import {
+  getFleetStore,
+  addFleetDevice,
+  removeFleetDevice,
+  setActiveFleetDevice,
+  getActiveFleetDevice,
+  getFleetDevice,
+  fleetDeviceToRouterConfig,
+  type FleetStore,
+} from '../config/fleet.js';
 import { SecurityAuditor } from '../safety/auditor.js';
 import type { AuditItem } from '../client/types.js';
 import { PccCalculator } from '../safety/pcc-calculator.js';
@@ -37,10 +47,19 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'wireguard', title: 'WireGuard Studio', icon: '🔑' },
   { id: 'hotspot', title: 'Hotspot Studio', icon: '📶' },
   { id: 'monitor', title: 'Traffic Monitor', icon: '📈' },
-  { id: 'fleet', title: 'PoE & Fleet', icon: '🔌' },
+  { id: 'fleet', title: 'Fleet & Multi-Router', icon: '🖧' },
   { id: 'linter', title: 'Config Linter', icon: '🔍' },
   { id: 'profiles', title: 'Profiles & MCP', icon: '⚙️' },
 ];
+
+interface AddRouterForm {
+  name: string;
+  host: string;
+  port: string;
+  user: string;
+  password: string;
+  model: string;
+}
 
 /**
  * Main Fullscreen Terminal User Interface (TUI) Dashboard & Wizard Engine.
@@ -52,8 +71,22 @@ export class TuiDashboard {
   private isRunning = true;
   private focus: 'nav' | 'content' | 'wizard' = 'nav';
 
+  // Multi-Router Fleet State
+  private fleetStore: FleetStore;
+  private selectedFleetIndex = 0;
+  private wizardMode: 'pcc' | 'wireguard' | 'hotspot' | 'add-router' | null = null;
+  private addRouterField = 0;
+  private addRouterForm: AddRouterForm = {
+    name: '',
+    host: '192.168.88.1',
+    port: '443',
+    user: 'admin',
+    password: '',
+    model: 'E60iUGS',
+  };
+
   // Live Router Telemetry
-  private routerConfig = loadRouterConfig();
+  private routerConfig;
   private connectionStatus: 'connected' | 'connecting' | 'offline' = 'connecting';
   private routerOsVersion = 'RouterOS v7';
   private boardModel = 'MikroTik Hardware';
@@ -70,8 +103,33 @@ export class TuiDashboard {
   private auditFindings: AuditItem[] = [];
   private isAuditing = false;
 
-  constructor(_options: TuiDashboardOptions = {}) {
+  constructor(options: TuiDashboardOptions = {}) {
     this.screen = new TerminalScreen();
+    this.fleetStore = getFleetStore();
+
+    if (options.device) {
+      const dev = getFleetDevice(options.device);
+      if (dev) {
+        setActiveFleetDevice(dev.name);
+        this.fleetStore = getFleetStore();
+        this.routerConfig = fleetDeviceToRouterConfig(dev);
+      } else {
+        const active = getActiveFleetDevice();
+        this.routerConfig = active ? fleetDeviceToRouterConfig(active) : fleetDeviceToRouterConfig(this.fleetStore.devices[0]!);
+      }
+    } else {
+      const active = getActiveFleetDevice();
+      this.routerConfig = active ? fleetDeviceToRouterConfig(active) : fleetDeviceToRouterConfig(this.fleetStore.devices[0]!);
+    }
+
+    // First-run experience: if fleet is empty, launch Add-Router Wizard immediately
+    if (this.fleetStore.devices.length === 0) {
+      this.activeTab = 'fleet';
+      this.selectedNavIndex = NAV_ITEMS.findIndex((n) => n.id === 'fleet');
+      this.focus = 'wizard';
+      this.wizardMode = 'add-router';
+      this.addRouterField = 0;
+    }
   }
 
   /**
@@ -113,7 +171,6 @@ export class TuiDashboard {
         this.boardModel = test.boardModel || 'MikroTik E60iUGS';
         this.uptime = test.uptime || '-';
 
-        // Query deep resources
         try {
           const res = await conn.getResource();
           if (res) {
@@ -140,6 +197,12 @@ export class TuiDashboard {
       // Quit
       if (key.name === 'q' && this.focus !== 'wizard') {
         this.isRunning = false;
+        return;
+      }
+
+      // If in Add-Router Wizard, handle form input characters
+      if (this.focus === 'wizard' && this.wizardMode === 'add-router') {
+        this.handleAddRouterKey(key);
         return;
       }
 
@@ -202,6 +265,7 @@ export class TuiDashboard {
     this.wizardData = {};
     this.wizardResult = null;
     this.wireguardResult = null;
+    this.wizardMode = null;
     this.focus = 'nav';
   }
 
@@ -212,8 +276,9 @@ export class TuiDashboard {
       return;
     }
 
-    // Trigger interactive wizards or actions per tab
-    if (this.activeTab === 'pcc') {
+    if (this.activeTab === 'fleet') {
+      this.handleFleetKey(key);
+    } else if (this.activeTab === 'pcc') {
       this.handlePccWizardKey(key);
     } else if (this.activeTab === 'wireguard') {
       this.handleWireguardWizardKey(key);
@@ -224,16 +289,130 @@ export class TuiDashboard {
     }
   }
 
+  private handleFleetKey(key: { name: string }): void {
+    const devices = this.fleetStore.devices;
+
+    // Up / Down in Fleet table
+    if (key.name === 'up' || key.name === 'k') {
+      if (devices.length > 0) {
+        this.selectedFleetIndex = (this.selectedFleetIndex - 1 + devices.length) % devices.length;
+        this.render();
+      }
+    } else if (key.name === 'down' || key.name === 'j') {
+      if (devices.length > 0) {
+        this.selectedFleetIndex = (this.selectedFleetIndex + 1) % devices.length;
+        this.render();
+      }
+    } else if (key.name === 's' || key.name === 'return' || key.name === 'enter') {
+      // Switch active target router
+      const targetDev = devices[this.selectedFleetIndex];
+      if (targetDev) {
+        setActiveFleetDevice(targetDev.name);
+        this.fleetStore = getFleetStore();
+        this.routerConfig = fleetDeviceToRouterConfig(targetDev);
+        this.fetchSystemTelemetry();
+      }
+    } else if (key.name === 'a') {
+      // Open Add Router Form Wizard
+      this.focus = 'wizard';
+      this.wizardMode = 'add-router';
+      this.addRouterField = 0;
+      this.addRouterForm = {
+        name: `router-${(devices.length + 1).toString()}`,
+        host: '192.168.88.1',
+        port: '443',
+        user: 'admin',
+        password: '',
+        model: 'E60iUGS',
+      };
+      this.render();
+    } else if (key.name === 'd') {
+      // Delete selected router
+      const targetDev = devices[this.selectedFleetIndex];
+      if (targetDev && devices.length > 1) {
+        removeFleetDevice(targetDev.name);
+        this.fleetStore = getFleetStore();
+        this.selectedFleetIndex = Math.max(0, this.selectedFleetIndex - 1);
+        const active = getActiveFleetDevice();
+        if (active) {
+          this.routerConfig = fleetDeviceToRouterConfig(active);
+          this.fetchSystemTelemetry();
+        }
+        this.render();
+      }
+    }
+  }
+
+  private handleAddRouterKey(key: { name: string; sequence: string }): void {
+    if (key.name === 'escape') {
+      this.focus = 'content';
+      this.wizardMode = null;
+      this.render();
+      return;
+    }
+
+    const fieldKeys: Array<keyof AddRouterForm> = ['name', 'host', 'port', 'user', 'password', 'model'];
+    const currentKey = fieldKeys[this.addRouterField] || 'name';
+
+    if (key.name === 'return' || key.name === 'enter') {
+      if (this.addRouterField < fieldKeys.length - 1) {
+        this.addRouterField++;
+        this.render();
+      } else {
+        // Complete form: save to fleet
+        const newDev = addFleetDevice({
+          name: this.addRouterForm.name || `router-${Date.now().toString(36)}`,
+          host: this.addRouterForm.host || '192.168.88.1',
+          port: parseInt(this.addRouterForm.port, 10) || 443,
+          user: this.addRouterForm.user || 'admin',
+          password: this.addRouterForm.password,
+          model: this.addRouterForm.model || 'MikroTik E60iUGS',
+        });
+
+        this.fleetStore = getFleetStore();
+        this.routerConfig = fleetDeviceToRouterConfig(newDev);
+        this.focus = 'content';
+        this.wizardMode = null;
+        this.fetchSystemTelemetry();
+      }
+      return;
+    }
+
+    if (key.name === 'up' && this.addRouterField > 0) {
+      this.addRouterField--;
+      this.render();
+      return;
+    }
+
+    if (key.name === 'down' && this.addRouterField < fieldKeys.length - 1) {
+      this.addRouterField++;
+      this.render();
+      return;
+    }
+
+    if (key.name === 'backspace') {
+      this.addRouterForm[currentKey] = this.addRouterForm[currentKey].slice(0, -1);
+      this.render();
+      return;
+    }
+
+    // Printable character input
+    if (key.sequence && key.sequence.length === 1 && !key.name.startsWith('f') && key.name !== 'tab') {
+      this.addRouterForm[currentKey] += key.sequence;
+      this.render();
+    }
+  }
+
   private handlePccWizardKey(key: { name: string }): void {
     if (key.name === 'w' || key.name === 'return' || key.name === 'enter') {
       this.focus = 'wizard';
+      this.wizardMode = 'pcc';
       if (this.wizardStep === 0) {
         this.wizardStep = 1;
       } else if (this.wizardStep === 1) {
         this.wizardData.ratio = this.wizardData.ratio || 'ISP1:100,ISP2:50';
         this.wizardStep = 2;
       } else if (this.wizardStep === 2) {
-        // Calculate PCC
         const pccResult = PccCalculator.calculate({
           wans: [
             { name: 'ISP1', weight: 2, gateway: '192.168.1.1' },
@@ -251,10 +430,11 @@ export class TuiDashboard {
   private async handleWireguardWizardKey(key: { name: string }): Promise<void> {
     if (key.name === 'g' || key.name === 'return' || key.name === 'enter') {
       this.focus = 'wizard';
+      this.wizardMode = 'wireguard';
       this.wireguardResult = await WireGuardProvisioner.provisionClient({
         clientName: 'wg-client-phone',
         clientIp: '10.10.0.2/32',
-        serverEndpoint: 'vpn.example.com:13231',
+        serverEndpoint: `${this.routerConfig.host}:13231`,
         serverPublicKey: 'YOUR_SERVER_PUBLIC_KEY_HERE_44_CHARS===',
         interfaceName: 'wg0',
         dns: '10.10.0.1',
@@ -266,6 +446,7 @@ export class TuiDashboard {
   private handleHotspotWizardKey(key: { name: string }): void {
     if (key.name === 'return' || key.name === 'enter' || key.name === 'w') {
       this.focus = 'wizard';
+      this.wizardMode = 'hotspot';
       const authModel = (this.wizardData.authModel as HotspotAuthModel) || 'all-in-one';
       const result = HotspotPortalGenerator.generate({
         venueName: 'Enterprise Lounge',
@@ -302,7 +483,7 @@ export class TuiDashboard {
             title: 'Audit Connection Failed',
             status: 'CRITICAL',
             detail: `Could not connect to router at ${this.routerConfig.host}: ${err instanceof Error ? err.message : String(err)}`,
-            recommendation: '# Verify router IP, REST API port 443, and credentials in .env',
+            recommendation: '# Verify router IP, REST API port 443, and credentials in fleet.json or .env',
           },
         ];
       } finally {
@@ -347,8 +528,9 @@ export class TuiDashboard {
         ? chalk.bgYellow.black(' CONNECTING ')
         : chalk.bgRed.white(' OFFLINE ');
 
+    const activeRouterName = chalk.bold.cyan(`[${this.fleetStore.activeDevice.toUpperCase()}]`);
     const hardwareBadge = chalk.gray(`| HW: ${chalk.cyan(this.boardModel)} | OS: ${chalk.cyan(this.routerOsVersion)}`);
-    const targetBadge = chalk.gray(`| Target: ${chalk.bold(host)}`);
+    const targetBadge = chalk.gray(`| Target: ${activeRouterName} ${chalk.white(host)}`);
 
     this.screen.moveTo(1, 1);
     this.screen.drawBox(1, 1, 3, cols, {
@@ -380,7 +562,7 @@ export class TuiDashboard {
 
   private renderMainContent(startCol: number, height: number, width: number): void {
     const lines: string[] = [];
-    const activeItem = NAV_ITEMS[this.selectedNavIndex] || NAV_ITEMS[0];
+    const activeItem = NAV_ITEMS[this.selectedNavIndex] || NAV_ITEMS[0]!;
 
     switch (this.activeTab) {
       case 'telemetry':
@@ -413,7 +595,7 @@ export class TuiDashboard {
     }
 
     this.screen.drawBox(4, startCol, height, width, {
-      title: activeItem ? `${activeItem.icon} ${activeItem.title.toUpperCase()}` : 'MAIN PANEL',
+      title: `${activeItem.icon} ${activeItem.title.toUpperCase()}`,
       focused: this.focus === 'content' || this.focus === 'wizard',
       lines,
     });
@@ -519,7 +701,7 @@ export class TuiDashboard {
     if (!this.wireguardResult) {
       lines.push('  Target Interface : wg0');
       lines.push('  Client Tunnel IP : 10.10.0.2/32');
-      lines.push('  Listen Port      : 13231');
+      lines.push(`  Server Endpoint  : ${this.routerConfig.host}:13231`);
       lines.push('');
       lines.push(chalk.bgCyan.black(' Press [g] or [Enter] to provision client keypair & QR code '));
     } else {
@@ -576,21 +758,76 @@ export class TuiDashboard {
   }
 
   private renderFleetContent(lines: string[]): void {
-    lines.push(chalk.cyan.bold('PoE Power Control & Fleet Inventory:'));
-    lines.push(chalk.gray('Inspect connected devices, wattage, and power-cycle PoE ports safely.'));
+    if (this.wizardMode === 'add-router') {
+      this.renderAddRouterWizard(lines);
+      return;
+    }
+
+    lines.push(chalk.cyan.bold('Multi-Router Fleet Inventory (~/.mikrotik-skill/fleet.json):'));
+    lines.push(chalk.gray('Select any router and press [s] or [Enter] to immediately switch target without restart.'));
     lines.push('');
 
-    const devices = listAllDevices();
-    lines.push(chalk.bold(`Fleet Inventory (${devices.length} Devices Defined):`));
-    devices.forEach((d) => {
-      lines.push(`  • ${chalk.bold.white(d.name.padEnd(14, ' '))} : ${chalk.cyan(d.host)} (${d.source})`);
+    const devices = this.fleetStore.devices;
+    lines.push('  #   Status     Router Name         Target Host:Port          User     Model');
+    lines.push('  ──────────────────────────────────────────────────────────────────────────────');
+
+    devices.forEach((d, idx) => {
+      const isSelected = idx === this.selectedFleetIndex;
+      const isActive = d.name === this.fleetStore.activeDevice;
+
+      const cursor = isSelected ? chalk.cyan.bold('▶ ') : '  ';
+      const statusBadge = isActive ? chalk.bgGreen.black.bold(' ACTIVE ') : chalk.gray(' IDLE   ');
+      const nameCol = padRight(d.name, 18);
+      const hostCol = padRight(`${d.host}:${d.port}`, 24);
+      const userCol = padRight(d.user, 8);
+      const modelCol = chalk.gray(d.model || 'MikroTik');
+
+      const rowText = `${cursor}${statusBadge}  ${chalk.white.bold(nameCol)}  ${chalk.cyan(hostCol)}  ${userCol} ${modelCol}`;
+      if (isSelected) {
+        lines.push(chalk.bgGray.black(rowText));
+      } else {
+        lines.push(rowText);
+      }
     });
 
     lines.push('');
-    lines.push(chalk.bold('Active Device PoE Ports:'));
-    lines.push(`  • ${chalk.green('ether5')} (PoE Out) : Passive Passthrough (Status: Powered, Voltage: 24.1V, Current: 320mA)`);
+    lines.push(chalk.gray('──────────────────────────────────────────────────────────────────────────────'));
+    lines.push(`  ${chalk.green.bold('[s] / [Enter]')} Switch Active   ${chalk.cyan.bold('[a]')} Add Router   ${chalk.red.bold('[d]')} Delete Router   ${chalk.yellow.bold('[r]')} Refresh`);
     lines.push('');
-    lines.push(chalk.gray('Power-cycle port via CLI: `mtik poe ether5 --cycle`.'));
+    lines.push(chalk.gray('Quick CLI launch shortcut: run `mtik <router-name>` anytime in your shell!'));
+  }
+
+  private renderAddRouterWizard(lines: string[]): void {
+    lines.push(chalk.yellow.bold('★ Interactive Onboarding: Add Router to Fleet'));
+    lines.push(chalk.gray('Credentials will be securely encrypted with AES-256 in ~/.mikrotik-skill/fleet.json'));
+    lines.push('');
+
+    const fields: Array<{ key: keyof AddRouterForm; label: string; placeholder: string; isPassword?: boolean }> = [
+      { key: 'name', label: '1. Router Name Identifier', placeholder: 'e.g. noc-e60iugs, home-hex' },
+      { key: 'host', label: '2. Target IP Address / Domain', placeholder: 'e.g. 192.168.88.1' },
+      { key: 'port', label: '3. REST API Port', placeholder: '443 (default HTTPS)' },
+      { key: 'user', label: '4. Username', placeholder: 'admin' },
+      { key: 'password', label: '5. Password', placeholder: '••••••••', isPassword: true },
+      { key: 'model', label: '6. Hardware Model', placeholder: 'e.g. E60iUGS (hEX S 2024)' },
+    ];
+
+    fields.forEach((f, idx) => {
+      const isFocused = idx === this.addRouterField;
+      const rawVal = this.addRouterForm[f.key];
+      const displayVal = f.isPassword ? '•'.repeat(rawVal.length) : rawVal;
+
+      const cursor = isFocused ? chalk.cyan.bold(' ▶ ') : '   ';
+      const labelText = isFocused ? chalk.bold.white(f.label) : chalk.gray(f.label);
+      lines.push(`${cursor}${labelText}:`);
+
+      const inputBox = isFocused
+        ? chalk.bgCyan.black(` ${displayVal || f.placeholder}█ `)
+        : chalk.gray(`   [ ${displayVal || f.placeholder} ]`);
+      lines.push(`   ${inputBox}`);
+      lines.push('');
+    });
+
+    lines.push(chalk.gray('Press [Enter] for next field / save. [Up/Down] to navigate. [Esc] to cancel.'));
   }
 
   private renderLinterContent(lines: string[]): void {

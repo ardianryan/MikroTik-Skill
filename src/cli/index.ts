@@ -29,6 +29,13 @@ import { HotspotPortalGenerator, type HotspotAuthModel } from '../safety/hotspot
 import { MikroTikHttpServer } from '../server/http.js';
 import { OpenApiGenerator } from '../server/openapi.js';
 import { runTui } from '../tui/index.js';
+import {
+  getFleetStore,
+  getFleetDevice,
+  addFleetDevice,
+  removeFleetDevice,
+  setActiveFleetDevice,
+} from '../config/fleet.js';
 import type { InterfaceTrafficMonitor } from '../client/types.js';
 
 const program = new Command();
@@ -1113,25 +1120,118 @@ program
   });
 
 program
-  .command('tui')
+  .command('fleet')
+  .description('Manage multi-router fleet inventory (~/.mikrotik-skill/fleet.json).')
+  .argument('[action]', 'Action: list, add, switch, remove', 'list')
+  .argument('[name]', 'Router name identifier')
+  .argument('[host]', 'Router IP or domain')
+  .action((action, name, host) => {
+    const store = getFleetStore();
+
+    if (action === 'list') {
+      console.log(chalk.cyan.bold('\n=== Multi-Router Fleet Inventory (~/.mikrotik-skill/fleet.json) ===\n'));
+      if (store.devices.length === 0) {
+        console.log(chalk.gray('No routers registered yet. Run `mtik` to launch TUI wizard or `mtik fleet add <name> <host>`.'));
+      } else {
+        store.devices.forEach((d) => {
+          const isActive = d.name === store.activeDevice;
+          const badge = isActive ? chalk.bgGreen.black.bold(' ACTIVE ') : chalk.gray(' IDLE   ');
+          console.log(`  ${badge} ${chalk.white.bold(d.name.padEnd(16, ' '))} ${chalk.cyan(`${d.host}:${d.port}`)} (user: ${d.user}) [${d.model || 'MikroTik'}]`);
+        });
+      }
+      console.log('');
+      return;
+    }
+
+    if (action === 'add') {
+      if (!name || !host) {
+        console.error(chalk.red('Usage: mtik fleet add <name> <host>'));
+        process.exitCode = 1;
+        return;
+      }
+      const dev = addFleetDevice({ name, host, user: 'admin', port: 443 });
+      console.log(chalk.green(`✓ Router '${dev.name}' added to fleet and set as active target!`));
+      return;
+    }
+
+    if (action === 'switch') {
+      if (!name) {
+        console.error(chalk.red('Usage: mtik fleet switch <name>'));
+        process.exitCode = 1;
+        return;
+      }
+      const success = setActiveFleetDevice(name);
+      if (success) {
+        console.log(chalk.green(`✓ Switched active router to '${name}'.`));
+      } else {
+        console.error(chalk.red(`Router '${name}' not found in fleet.`));
+        process.exitCode = 1;
+      }
+      return;
+    }
+
+    if (action === 'remove' || action === 'rm' || action === 'delete') {
+      if (!name) {
+        console.error(chalk.red('Usage: mtik fleet remove <name>'));
+        process.exitCode = 1;
+        return;
+      }
+      const success = removeFleetDevice(name);
+      if (success) {
+        console.log(chalk.green(`✓ Router '${name}' removed from fleet.`));
+      } else {
+        console.error(chalk.red(`Router '${name}' not found in fleet.`));
+        process.exitCode = 1;
+      }
+      return;
+    }
+  });
+
+program
+  .command('tui [device]')
   .alias('ui')
   .description('Launch interactive Fullscreen Terminal User Interface (TUI) Dashboard & Wizards.')
   .option('-d, --device <name>', 'Target router device from inventory')
-  .action(async (opts) => {
+  .action(async (device, opts) => {
     try {
-      await runTui({ device: opts.device });
+      await runTui({ device: device || opts.device });
     } catch (err) {
       console.error(chalk.red(`TUI Error: ${err instanceof Error ? err.message : String(err)}`));
       process.exitCode = 1;
     }
   });
 
-// Launch TUI by default when run in interactive terminal without arguments
+// Smart direct launcher:
+// 1. If run in interactive terminal without arguments -> launch TUI
+// 2. If run with a single argument matching a fleet router name -> launch TUI for that router!
 if (process.argv.length <= 2 && process.stdin.isTTY) {
   runTui().catch((err) => {
     console.error(chalk.red(`TUI Error: ${err instanceof Error ? err.message : String(err)}`));
     process.exit(1);
   });
+} else if (process.argv.length === 3 && process.stdin.isTTY) {
+  const candidate = process.argv[2] || '';
+  const knownCommands = [
+    'test', 'status', 'audit', 'mangle', 'route-force', 'lease', 'backup', 'monitor',
+    'container', 'adlist', 'profile', 'install-mcp', 'mcp', 'template', 'generate',
+    'exec', 'run', 'rest', 'prompt', 'serve', 'openapi', 'pcc', 'hotspot', 'wireguard',
+    'migrate-filter', 'lint', 'devices', 'inventory', 'logs', 'poe', 'queue', 'wifi',
+    'wireless', 'tui', 'ui', 'fleet', 'help', '--help', '-h', '--version', '-V'
+  ];
+
+  if (!candidate.startsWith('-') && !knownCommands.includes(candidate)) {
+    const fleetDev = getFleetDevice(candidate);
+    if (fleetDev) {
+      runTui({ device: candidate }).catch((err) => {
+        console.error(chalk.red(`TUI Error: ${err instanceof Error ? err.message : String(err)}`));
+        process.exit(1);
+      });
+    } else {
+      program.parse(process.argv);
+    }
+  } else {
+    program.parse(process.argv);
+  }
 } else {
   program.parse(process.argv);
 }
