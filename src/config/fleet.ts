@@ -102,24 +102,32 @@ export function getFleetStore(): FleetStore {
     }
   }
 
-  // Seed default device from current .env if available
-  const defaultCfg = loadRouterConfig();
-  const defaultDevice: FleetDevice = {
-    id: 'dev-default',
-    name: 'default',
-    host: defaultCfg.host,
-    port: defaultCfg.restPort,
-    user: defaultCfg.user,
-    passwordEncrypted: encryptPassword(defaultCfg.password),
-    useSsl: defaultCfg.useSsl,
-    preferBinary: defaultCfg.preferBinary,
-    model: 'MikroTik Router',
-    tags: ['default'],
-  };
+  // Only seed default device if explicitly configured in environment
+  const hasEnvConfig = Boolean(process.env.ROUTEROS_HOST && process.env.ROUTEROS_HOST !== '192.168.88.1');
+  const devices: FleetDevice[] = [];
+  let activeDevice = '';
+
+  if (hasEnvConfig) {
+    const defaultCfg = loadRouterConfig();
+    const defaultDevice: FleetDevice = {
+      id: 'dev-default',
+      name: 'default',
+      host: defaultCfg.host,
+      port: defaultCfg.restPort,
+      user: defaultCfg.user,
+      passwordEncrypted: encryptPassword(defaultCfg.password),
+      useSsl: defaultCfg.useSsl,
+      preferBinary: defaultCfg.preferBinary,
+      model: 'MikroTik Router',
+      tags: ['default'],
+    };
+    devices.push(defaultDevice);
+    activeDevice = 'default';
+  }
 
   const initialStore: FleetStore = {
-    activeDevice: 'default',
-    devices: [defaultDevice],
+    activeDevice,
+    devices,
   };
 
   saveFleetStore(initialStore);

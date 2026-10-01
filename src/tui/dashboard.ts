@@ -122,6 +122,13 @@ export class TuiDashboard {
       this.routerConfig = active ? fleetDeviceToRouterConfig(active) : fleetDeviceToRouterConfig(this.fleetStore.devices[0]!);
     }
 
+    // When no specific device argument is given, start in Fleet & Multi-Router tab to select or add router
+    if (!options.device) {
+      this.activeTab = 'fleet';
+      this.selectedNavIndex = NAV_ITEMS.findIndex((n) => n.id === 'fleet');
+      this.focus = 'content';
+    }
+
     // First-run experience: if fleet is empty, launch Add-Router Wizard immediately
     if (this.fleetStore.devices.length === 0) {
       this.activeTab = 'fleet';
@@ -143,8 +150,10 @@ export class TuiDashboard {
     // Initial render
     this.render();
 
-    // Fetch live system status in background
-    this.fetchSystemTelemetry();
+    // Only fetch live telemetry if we have an active device and we are not in add-router wizard
+    if (this.fleetStore.devices.length > 0 && this.wizardMode !== 'add-router') {
+      this.fetchSystemTelemetry();
+    }
 
     // Event loop wait
     return new Promise((resolve) => {
@@ -304,12 +313,15 @@ export class TuiDashboard {
         this.render();
       }
     } else if (key.name === 's' || key.name === 'return' || key.name === 'enter') {
-      // Switch active target router
+      // Switch active target router and open Telemetry Dashboard
       const targetDev = devices[this.selectedFleetIndex];
       if (targetDev) {
         setActiveFleetDevice(targetDev.name);
         this.fleetStore = getFleetStore();
         this.routerConfig = fleetDeviceToRouterConfig(targetDev);
+        this.activeTab = 'telemetry';
+        this.selectedNavIndex = NAV_ITEMS.findIndex((n) => n.id === 'telemetry');
+        this.focus = 'content';
         this.fetchSystemTelemetry();
       }
     } else if (key.name === 'a') {
@@ -344,7 +356,8 @@ export class TuiDashboard {
   }
 
   private handleAddRouterKey(key: { name: string; sequence: string }): void {
-    if (key.name === 'escape') {
+    const keyName = key.name || '';
+    if (keyName === 'escape') {
       this.focus = 'content';
       this.wizardMode = null;
       this.render();
@@ -354,7 +367,7 @@ export class TuiDashboard {
     const fieldKeys: Array<keyof AddRouterForm> = ['name', 'host', 'port', 'user', 'password', 'model'];
     const currentKey = fieldKeys[this.addRouterField] || 'name';
 
-    if (key.name === 'return' || key.name === 'enter') {
+    if (keyName === 'return' || keyName === 'enter') {
       if (this.addRouterField < fieldKeys.length - 1) {
         this.addRouterField++;
         this.render();
@@ -378,26 +391,26 @@ export class TuiDashboard {
       return;
     }
 
-    if (key.name === 'up' && this.addRouterField > 0) {
+    if (keyName === 'up' && this.addRouterField > 0) {
       this.addRouterField--;
       this.render();
       return;
     }
 
-    if (key.name === 'down' && this.addRouterField < fieldKeys.length - 1) {
+    if (keyName === 'down' && this.addRouterField < fieldKeys.length - 1) {
       this.addRouterField++;
       this.render();
       return;
     }
 
-    if (key.name === 'backspace') {
+    if (keyName === 'backspace') {
       this.addRouterForm[currentKey] = this.addRouterForm[currentKey].slice(0, -1);
       this.render();
       return;
     }
 
-    // Printable character input
-    if (key.sequence && key.sequence.length === 1 && !key.name.startsWith('f') && key.name !== 'tab') {
+    // Printable character input (including dots, letters, numbers, symbols)
+    if (key.sequence && key.sequence.length === 1 && !keyName.startsWith('f') && keyName !== 'tab' && keyName !== 'enter' && keyName !== 'return' && keyName !== 'escape') {
       this.addRouterForm[currentKey] += key.sequence;
       this.render();
     }

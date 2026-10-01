@@ -50,17 +50,24 @@ export class TerminalScreen {
       process.stdin.setRawMode(true);
       process.stdin.resume();
 
-      process.stdin.on('keypress', (_ch, key) => {
-        if (!key) return;
+      process.stdin.on('keypress', (ch, key) => {
+        const rawKey = key || {};
+        const normalizedKey = {
+          name: rawKey.name || ch || rawKey.sequence || '',
+          ctrl: Boolean(rawKey.ctrl),
+          shift: Boolean(rawKey.shift),
+          meta: Boolean(rawKey.meta),
+          sequence: rawKey.sequence || ch || '',
+        };
 
         // Global interrupt check (Ctrl+C)
-        if (key.ctrl && key.name === 'c') {
+        if (normalizedKey.ctrl && normalizedKey.name === 'c') {
           this.leave();
           process.exit(0);
         }
 
         if (this.keyHandler) {
-          this.keyHandler(key);
+          this.keyHandler(normalizedKey);
         }
       });
     }
