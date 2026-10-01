@@ -1,6 +1,6 @@
 import chalk from 'chalk';
 import { TerminalScreen } from './screen.js';
-import { truncate, padRight, renderGauge, formatBytes } from './utils.js';
+import { truncate, padRight, renderGauge, formatBytes, stringWidth, center, terminalLink } from './utils.js';
 import { ConnectionManager } from '../client/connection-manager.js';
 import { sanitizeConfig, listProfiles, loadRouterConfig } from '../config/profile.js';
 import {
@@ -958,6 +958,8 @@ export class TuiDashboard {
       focused: true,
       lines,
     });
+
+    this.renderAttributionFooter(rows, cols);
   }
 
   private renderHeader(cols: number, host: string): void {
@@ -1324,5 +1326,28 @@ export class TuiDashboard {
     const footerText = ` ${navHelp}  ${tabHelp}  ${actionHelp}  ${switchHelp}  ${refreshHelp}  ${quitHelp} `;
     const paddedFooter = padRight(footerText, cols);
     this.screen.write(chalk.bgGray.black(paddedFooter));
+
+    this.renderAttributionFooter(rows, cols);
+  }
+
+  private renderAttributionFooter(rows: number, cols: number): void {
+    this.screen.moveTo(rows, 1);
+    const brand = chalk.gray(' MikroTik NetDevOps Suite v1.2.0');
+    const authorLink = terminalLink('Ardian Ryan', 'https://github.com/ardianryan');
+    const authorFull = `${chalk.gray('Engineered by ')}${chalk.cyan.bold(authorLink)}${chalk.gray(' (https://github.com/ardianryan) ')}`;
+    const authorCompact = `${chalk.gray('Engineered by ')}${chalk.cyan.bold(authorLink)} `;
+
+    const authorText = cols >= 88 ? authorFull : authorCompact;
+    const authorLen = stringWidth(authorText);
+    const brandLen = stringWidth(brand);
+
+    if (cols >= 68) {
+      const spaceLen = Math.max(1, cols - brandLen - authorLen);
+      const fullLine = `${brand}${' '.repeat(spaceLen)}${authorText}`;
+      this.screen.write(fullLine);
+    } else {
+      const compactLine = center(authorCompact, cols);
+      this.screen.write(compactLine);
+    }
   }
 }

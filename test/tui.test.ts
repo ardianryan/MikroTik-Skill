@@ -9,16 +9,19 @@ import {
   center,
   formatBytes,
   renderGauge,
+  terminalLink,
 } from '../src/tui/utils.js';
 import { TuiDashboard } from '../src/tui/dashboard.js';
 
 describe('Terminal UI (TUI) Engine', () => {
-  it('correctly calculates stringWidth ignoring ANSI escape sequences', () => {
+  it('correctly calculates stringWidth ignoring ANSI escape sequences and OSC 8 hyperlinks', () => {
     const plain = 'Hello MikroTik';
     const colored = chalk.cyan.bold('Hello MikroTik');
+    const linked = terminalLink('Ardian Ryan', 'https://github.com/ardianryan');
 
     assert.equal(stringWidth(plain), 14);
     assert.equal(stringWidth(colored), 14);
+    assert.equal(stringWidth(linked), 11);
   });
 
   it('truncates strings to specified visible width without breaking', () => {

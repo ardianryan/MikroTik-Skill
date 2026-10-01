@@ -2,8 +2,16 @@
  * Terminal UI text formatting & ANSI string utilities.
  */
 
-// Regular expression to match ANSI escape codes for accurate visual length calculation
-const ANSI_REGEX = /\x1b\[[0-9;]*[a-zA-Z]/g;
+// Regular expression to match ANSI escape codes (SGR and OSC 8 hyperlinks) for accurate visual length calculation
+const ANSI_REGEX = /\x1b\[[0-9;]*[a-zA-Z]|\x1b\]8;;[^\x07\x1b]*(?:\x07|\x1b\\)/g;
+
+/**
+ * Format a string with an OSC 8 terminal hyperlink.
+ * Modern terminal emulators render `text` clickable pointing to `url`.
+ */
+export function terminalLink(text: string, url: string): string {
+  return `\x1b]8;;${url}\x07${text}\x1b]8;;\x07`;
+}
 
 /**
  * Calculate the visual length of a string ignoring ANSI escape sequences.
@@ -32,12 +40,21 @@ export function truncate(str: string, maxWidth: number, ellipsis = '…'): numbe
   const target = Math.max(0, maxWidth - ellipsis.length);
 
   while (i < str.length && visibleCount < target) {
-    if (str[i] === '\x1b' && str[i + 1] === '[') {
-      const match = str.slice(i).match(/^\x1b\[[0-9;]*[a-zA-Z]/);
-      if (match) {
-        result += match[0];
-        i += match[0].length;
-        continue;
+    if (str[i] === '\x1b') {
+      if (str[i + 1] === '[') {
+        const match = str.slice(i).match(/^\x1b\[[0-9;]*[a-zA-Z]/);
+        if (match) {
+          result += match[0];
+          i += match[0].length;
+          continue;
+        }
+      } else if (str[i + 1] === ']') {
+        const match = str.slice(i).match(/^\x1b\]8;;[^\x07\x1b]*(?:\x07|\x1b\\)/);
+        if (match) {
+          result += match[0];
+          i += match[0].length;
+          continue;
+        }
       }
     }
     result += str[i];
