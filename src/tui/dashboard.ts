@@ -242,13 +242,13 @@ export class TuiDashboard {
           rawErr.toLowerCase().includes('unauthorized') ||
           rawErr.toLowerCase().includes('password')
         ) {
-          this.gatewayError = `❌ Autentikasi Gagal: Username atau Password salah untuk router ${dev.host}.`;
+          this.gatewayError = `❌ Authentication Failed: Invalid username or password for router ${dev.host}.`;
         } else if (rawErr.toLowerCase().includes('timeout') || rawErr.toLowerCase().includes('timed out')) {
-          this.gatewayError = `❌ Timeout (Port ${dev.port}): Router ${dev.host} tidak merespons. Periksa koneksi IP atau buka port di MikroTik (/ip service enable ${dev.preferBinary ? 'api' : 'www'}).`;
+          this.gatewayError = `❌ Timeout (Port ${dev.port}): Router ${dev.host} did not respond. Check IP connectivity or enable service (/ip service enable ${dev.preferBinary ? 'api' : 'www'}).`;
         } else if (rawErr.toLowerCase().includes('refused') || rawErr.toLowerCase().includes('econnrefused')) {
-          this.gatewayError = `❌ Koneksi Ditolak: Port ${dev.port} ditutup di router ${dev.host}. Buka service via terminal MikroTik (/ip service enable ${dev.preferBinary ? 'api' : 'www'}).`;
+          this.gatewayError = `❌ Connection Refused: Port ${dev.port} closed on router ${dev.host}. Enable service via MikroTik terminal (/ip service enable ${dev.preferBinary ? 'api' : 'www'}).`;
         } else {
-          this.gatewayError = `❌ Gagal terhubung ke ${dev.host}:${dev.port}: ${rawErr}`;
+          this.gatewayError = `❌ Connection Failed to ${dev.host}:${dev.port}: ${rawErr}`;
         }
         this.render();
       }
@@ -839,22 +839,22 @@ export class TuiDashboard {
     // Mode tabs
     const isSelect = this.gatewayMode === 'select';
     const tab1 = isSelect
-      ? chalk.bgCyan.black.bold(' [1] PILIH ROUTER TERSIMPAN ')
-      : chalk.white(' [1] Pilih Router Tersimpan ');
+      ? chalk.bgCyan.black.bold(' [1] SELECT SAVED ROUTER ')
+      : chalk.white(' [1] Select Saved Router ');
     const tab2 = !isSelect
-      ? chalk.bgCyan.black.bold(' [2] + TAMBAH ROUTER BARU ')
-      : chalk.white(' [2] + Tambah Router Baru ');
+      ? chalk.bgCyan.black.bold(' [2] + ADD NEW ROUTER ')
+      : chalk.white(' [2] + Add New Router ');
     lines.push(`${tab1}   ${tab2}`);
     lines.push('');
 
     if (this.gatewayMode === 'select') {
-      lines.push(chalk.bold.white('DAFTAR ROUTER TERDAFTAR (FLEET):'));
-      lines.push(chalk.gray('Pilih router lalu tekan [Enter] untuk login & buka dashboard bersidebar.'));
+      lines.push(chalk.bold.white('REGISTERED FLEET ROUTERS:'));
+      lines.push(chalk.gray('Select a router and press [Enter] to authenticate and open the dashboard.'));
       lines.push('');
 
       const devices = this.fleetStore.devices;
       if (devices.length === 0) {
-        lines.push(chalk.yellow('  (Belum ada router tersimpan. Tekan [A] atau [2] untuk menambah router)'));
+        lines.push(chalk.yellow('  (No routers stored yet. Press [A] or [2] to add a new router)'));
         lines.push('');
       } else {
         devices.forEach((dev, idx) => {
@@ -878,7 +878,7 @@ export class TuiDashboard {
       // Connecting state or error message
       lines.push('');
       if (this.isConnecting) {
-        lines.push(chalk.bgYellow.black(` ⏳ Menghubungkan & mengautentikasi ke ${this.connectingTargetName}... Mohon tunggu. `));
+        lines.push(chalk.bgYellow.black(` ⏳ Connecting & authenticating to ${this.connectingTargetName}... Please wait. `));
       } else if (this.gatewayError) {
         lines.push(chalk.bgRed.white(` ${this.gatewayError} `));
       } else {
@@ -890,24 +890,24 @@ export class TuiDashboard {
       lines.push(chalk.gray('─'.repeat(boxWidth - 4)));
       lines.push(
         chalk.gray(
-          `${chalk.cyan('[↑/↓]')} Pilih  ${chalk.green('[Enter]')} Login & Buka Dashboard  ${chalk.yellow('[A]')} Tambah  ${chalk.red('[D]')} Hapus  ${chalk.magenta('[Q]')} Keluar`
+          `${chalk.cyan('[↑/↓]')} Select  ${chalk.green('[Enter]')} Login & Launch Dashboard  ${chalk.yellow('[A]')} Add  ${chalk.red('[D]')} Delete  ${chalk.magenta('[Q]')} Quit`
         )
       );
     } else {
       // Add Router Form
-      lines.push(chalk.bold.white('ONBOARDING: MASUKKAN INFORMASI ROUTER BARU:'));
-      lines.push(chalk.gray('Isi data router. Tekan [Enter] untuk lanjut ke field berikutnya atau submit.'));
+      lines.push(chalk.bold.white('ONBOARDING: ENTER ROUTER CREDENTIALS:'));
+      lines.push(chalk.gray('Fill in router details. Press [Enter] to proceed to the next field or submit.'));
       lines.push('');
 
       const fields: Array<{ label: string; value: string; hint?: string }> = [
-        { label: 'Nama Label', value: this.addRouterForm.name || chalk.gray('(contoh: core-router)') },
-        { label: 'Host / IP', value: this.addRouterForm.host || chalk.gray('(contoh: 192.168.88.1)') },
+        { label: 'Router Name', value: this.addRouterForm.name || chalk.gray('(e.g. core-router)') },
+        { label: 'Host / IP', value: this.addRouterForm.host || chalk.gray('(e.g. 192.168.88.1)') },
         {
           label: 'Protocol / Mode',
           value: this.addRouterForm.preferBinary
-            ? chalk.cyan.bold('Binary API Port 8728 (Native, Tanpa SSL)')
+            ? chalk.cyan.bold('Binary API Port 8728 (Native, No SSL)')
             : chalk.cyan.bold('REST API Port 443/80 (HTTPS/HTTP)'),
-          hint: chalk.yellow('[Space untuk ganti]'),
+          hint: chalk.yellow('[Space to toggle]'),
         },
         { label: 'Port', value: this.addRouterForm.port },
         { label: 'Username', value: this.addRouterForm.user },
@@ -915,9 +915,9 @@ export class TuiDashboard {
           label: 'Password',
           value: this.addRouterForm.password
             ? '•'.repeat(this.addRouterForm.password.length)
-            : chalk.gray('(kosongkan jika tanpa password)'),
+            : chalk.gray('(leave empty if no password)'),
         },
-        { label: 'Model Hardware', value: this.addRouterForm.model },
+        { label: 'Hardware Model', value: this.addRouterForm.model },
       ];
 
       fields.forEach((f, idx) => {
@@ -937,7 +937,7 @@ export class TuiDashboard {
 
       lines.push('');
       if (this.isConnecting) {
-        lines.push(chalk.bgYellow.black(` ⏳ Menguji koneksi & menyimpan router... Mohon tunggu. `));
+        lines.push(chalk.bgYellow.black(` ⏳ Testing connection & saving router... Please wait. `));
       } else if (this.gatewayError) {
         lines.push(chalk.bgRed.white(` ${this.gatewayError} `));
       } else {
@@ -947,7 +947,7 @@ export class TuiDashboard {
       lines.push(chalk.gray('─'.repeat(boxWidth - 4)));
       lines.push(
         chalk.gray(
-          `${chalk.cyan('[Tab/↑/↓]')} Pindah Field  ${chalk.green('[Enter]')} Simpan & Connect  ${chalk.yellow('[Esc]')} Batal  ${chalk.magenta('[Q]')} Keluar`
+          `${chalk.cyan('[Tab/↑/↓]')} Move Field  ${chalk.green('[Enter]')} Save & Connect  ${chalk.yellow('[Esc]')} Cancel  ${chalk.magenta('[Q]')} Quit`
         )
       );
     }
