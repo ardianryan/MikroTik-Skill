@@ -554,3 +554,6 @@ See [SECURITY.md](./SECURITY.md) for vulnerability disclosure procedures.
 
 Released under the **[GNU General Public License v3.0 (GPL-3.0)](./LICENSE)**.  
 Copyright (c) 2026 Ardian Ryan <me@ardianryan.com>.
+
+
+<!-- Security scan triggered at 2026-10-07 11:18:07 -->
