@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.3.0] - 2026-10-28
+
+### Added
+- **RouterOS v7.25+ Security Hardening & DAI Auditing:**
+  - **REST API Transport Security (Pillar 2)**: Added audit check for `/ip/service/webserver` cleartext sub-service (`rest-plain=yes`). Warns when unencrypted HTTP REST is enabled and recommends `/ip service webserver set rest-plain=no`.
+  - **Dynamic ARP Inspection (DAI) & IP Source Guard (Pillar 9 / MTCSWE)**: Audits bridges with `dhcp-snooping=yes` to ensure `arp-inspection=yes` is enabled in RouterOS v7.25+ to prevent ARP spoofing.
+  - **Static Analysis Linter Rules (`RouterOsLinter`)**:
+    - `LINT-SEC-05`: Detects `/ip service webserver set rest-plain=yes` cleartext exposure.
+    - `LINT-L2-01`: Detects bridge DHCP snooping without Dynamic ARP Inspection (`arp-inspection=yes`).
+    - `LINT-SYN-03`: Detects legacy RouterOS v6 BGP peer/instance syntax (`/routing bgp peer|instance`).
+  - **Certified Templates Hardening**:
+    - `MTCSE`: Integrated `/ip service webserver set rest-plain=no`.
+    - `MTCSWE`: Updated bridge template to enable `dhcp-snooping=yes arp-inspection=yes`.
+- **Multi-Router Fleet Store & Persistent Management (`src/config/fleet.ts`):**
+  - Encrypted multi-router credential storage (`fleet.json`) using AES-256-GCM with machine-unique hardware salt derivation.
+  - Zero-credential interactive device onboarding wizard in TUI.
+  - Interactive Fleet Switcher dialog (`F` key in TUI) allowing instant switching between managed routers without leaving the dashboard.
+- **TUI Robustness & Navigation Improvements:**
+  - Normalized readline key events in `src/tui/screen.ts` preventing unhandled exceptions when typing dot (`.`) or symbol keys.
+  - Added empty fleet fallback guards with graceful onboarding launch.
+- **Strict English Localization Standard:**
+  - Standardized all TUI dialogs, help hints, status bars, code comments, and error messages to 100% English.
+  - Fully translated GitHub Wiki documentation (`MikroTik-Skill.wiki`) to English.
+- **Test Suite Expansion:**
+  - Expanded unit tests to **83 passing tests** across 15 suites covering fleet encryption, REST webserver audits, bridge DAI audits, and linter checks.
+
+---
+
 ## [1.2.0] - 2026-10-01
 
 ### Added
