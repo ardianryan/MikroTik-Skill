@@ -89,4 +89,34 @@ describe('RouterOsLinter', () => {
     assert.ok(finding);
     assert.strictEqual(finding?.severity, 'HIGH');
   });
+
+  it('detects cleartext REST API subservice enabled (rest-plain=yes)', () => {
+    const script = `
+/ip service webserver set rest-plain=yes
+    `;
+    const res = RouterOsLinter.lint(script);
+    const finding = res.findings.find((f) => f.id === 'LINT-SEC-05');
+    assert.ok(finding);
+    assert.strictEqual(finding?.severity, 'WARN');
+  });
+
+  it('detects bridge DHCP snooping without Dynamic ARP Inspection (DAI)', () => {
+    const script = `
+/interface bridge add name=bridge-corp dhcp-snooping=yes protocol-mode=rstp
+    `;
+    const res = RouterOsLinter.lint(script);
+    const finding = res.findings.find((f) => f.id === 'LINT-L2-01');
+    assert.ok(finding);
+    assert.strictEqual(finding?.severity, 'INFO');
+  });
+
+  it('detects legacy RouterOS v6 BGP peer syntax', () => {
+    const script = `
+/routing bgp peer add name=peer-isp1 remote-address=198.51.100.1 remote-as=64512
+    `;
+    const res = RouterOsLinter.lint(script);
+    const finding = res.findings.find((f) => f.id === 'LINT-SYN-03');
+    assert.ok(finding);
+    assert.strictEqual(finding?.severity, 'WARN');
+  });
 });

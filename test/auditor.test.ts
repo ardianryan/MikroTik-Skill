@@ -111,4 +111,76 @@ describe('SecurityAuditor', () => {
     assert.ok(ipv6Item);
     assert.equal(ipv6Item.status, 'WARN');
   });
+
+  test('flags WARN when REST API has rest-plain=yes enabled and WWW is active', async () => {
+    const mockConn = {
+      getResource: async () => ({ version: '7.25', board: 'RB5009' }),
+      getDnsSettings: async () => ({ 'allow-remote-requests': false }),
+      getFirewallFilters: async () => [],
+      getIpServices: async () => [
+        { name: 'www', port: 80, disabled: false, address: '' },
+      ],
+      getMangleRules: async () => [],
+      getRoutingTables: async () => [],
+      getNtpClient: async () => ({ enabled: true }),
+      getBridges: async () => [],
+      getIpv6Filters: async () => [{ chain: 'input', action: 'drop' }],
+      getWebServerSettings: async () => ({ 'rest-plain': true }),
+    } as unknown as ConnectionManager;
+
+    const auditor = new SecurityAuditor(mockConn);
+    const report = await auditor.runFullAudit();
+
+    const restItem = report.items.find((i) => i.title.includes('REST API Cleartext Transport'));
+    assert.ok(restItem);
+    assert.equal(restItem.status, 'WARN');
+  });
+
+  test('flags WARN when Bridge has dhcp-snooping=yes but Dynamic ARP Inspection is missing', async () => {
+    const mockConn = {
+      getResource: async () => ({ version: '7.25', board: 'CRS326' }),
+      getDnsSettings: async () => ({ 'allow-remote-requests': false }),
+      getFirewallFilters: async () => [],
+      getIpServices: async () => [],
+      getMangleRules: async () => [],
+      getRoutingTables: async () => [],
+      getNtpClient: async () => ({ enabled: true }),
+      getBridges: async () => [{ name: 'bridge1', 'protocol-mode': 'rstp', 'dhcp-snooping': true, 'arp-inspection': false }],
+      getIpv6Filters: async () => [{ chain: 'input', action: 'drop' }],
+      getWebServerSettings: async () => null,
+    } as unknown as ConnectionManager;
+
+    const auditor = new SecurityAuditor(mockConn);
+    const report = await auditor.runFullAudit();
+
+    const daiItem = report.items.find((i) => i.title.includes('Dynamic ARP Inspection'));
+    assert.ok(daiItem);
+    assert.equal(daiItem.status, 'WARN');
+  });
+
+  test('passes DAI check when arp-inspection=yes on snooped bridge', async () => {
+    const mockConn = {
+      getResource: async () => ({ version: '7.25', board: 'CRS326' }),
+      getDnsSettings: async () => ({ 'allow-remote-requests': false }),
+      getFirewallFilters: async () => [],
+      getIpServices: async () => [],
+      getMangleRules: async () => [],
+      getRoutingTables: async () => [],
+      getNtpClient: async () => ({ enabled: true }),
+      getBridges: async () => [{ name: 'bridge1', 'protocol-mode': 'rstp', 'dhcp-snooping': true, 'arp-inspection': true }],
+      getIpv6Filters: async () => [{ chain: 'input', action: 'drop' }],
+      getWebServerSettings: async () => ({ 'rest-plain': false }),
+    } as unknown as ConnectionManager;
+
+    const auditor = new SecurityAuditor(mockConn);
+    const report = await auditor.runFullAudit();
+
+    const daiItem = report.items.find((i) => i.title.includes('Dynamic ARP Inspection'));
+    assert.ok(daiItem);
+    assert.equal(daiItem.status, 'PASS');
+
+    const restItem = report.items.find((i) => i.title.includes('REST API Transport Security'));
+    assert.ok(restItem);
+    assert.equal(restItem.status, 'PASS');
+  });
 });

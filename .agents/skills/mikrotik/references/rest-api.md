@@ -170,3 +170,22 @@ Common status codes:
 - `401 Unauthorized`: Missing or invalid Basic Authentication credentials.
 - `404 Not Found`: Targeted item `.id` or menu does not exist.
 - `406 Not Acceptable`: Unsupported command verb on targeted menu.
+
+---
+
+## 6. RouterOS v7 Webserver Sub-Service Hardening (`/ip service webserver`)
+
+Starting with RouterOS v7, REST API transport behavior is governed independently from static WebFig through the `/ip/service/webserver` configuration menu:
+
+| Property | Default | Production Standard | Purpose |
+|---|:---:|:---:|---|
+| `rest-plain` | `yes` | `no` | Accepts unencrypted REST API requests over HTTP (`www` port 80). Disabling prevents credential and payload interception. |
+| `rest-secure` | `yes` | `yes` | Accepts encrypted REST API requests over HTTPS (`www-ssl` port 443). |
+| `ssl-certificate` | none | `<CERT_NAME>` | TLS certificate utilized for HTTPS REST endpoints. |
+
+### Hardening Command:
+```routeros
+# Disable plain HTTP REST API while retaining HTTPS REST API
+/ip service webserver set rest-plain=no rest-secure=yes
+```
+

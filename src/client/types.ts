@@ -122,8 +122,21 @@ export interface BridgeItem {
   name: string;
   'protocol-mode'?: string;
   'vlan-filtering'?: boolean | string;
+  'dhcp-snooping'?: boolean | string;
+  'arp-inspection'?: boolean | string;
+  'ip-source-guard'?: boolean | string;
   disabled?: boolean | string;
   comment?: string;
+}
+
+export interface WebServerSettings {
+  '.id'?: string;
+  mode?: string;
+  'rest-plain'?: boolean | string;
+  'rest-secure'?: boolean | string;
+  'ssl-certificate'?: string;
+  'http-port'?: number | string;
+  'https-port'?: number | string;
 }
 
 export interface ContainerItem {

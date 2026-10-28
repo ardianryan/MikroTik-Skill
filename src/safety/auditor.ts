@@ -11,7 +11,7 @@ export class SecurityAuditor {
   async runFullAudit(): Promise<AuditReport> {
     const items: AuditItem[] = [];
 
-    const [resource, dns, services, filters, mangle, tables, ntp, bridges, ipv6Filters] = await Promise.all([
+    const [resource, dns, services, filters, mangle, tables, ntp, bridges, ipv6Filters, webserver] = await Promise.all([
       this.conn.getResource().catch(() => ({} as SystemResource)),
       this.conn.getDnsSettings().catch(() => ({} as DnsSettings)),
       this.conn.getIpServices().catch(() => []),
@@ -21,6 +21,7 @@ export class SecurityAuditor {
       this.conn.getNtpClient().catch(() => ({} as NtpClient)),
       typeof this.conn.getBridges === 'function' ? this.conn.getBridges().catch(() => []) : Promise.resolve([]),
       typeof this.conn.getIpv6Filters === 'function' ? this.conn.getIpv6Filters().catch(() => []) : Promise.resolve([]),
+      typeof this.conn.getWebServerSettings === 'function' ? this.conn.getWebServerSettings().catch(() => null) : Promise.resolve(null),
     ]);
 
     if (!resource || (!resource.version && !resource.platform && !resource.board)) {
@@ -87,6 +88,31 @@ export class SecurityAuditor {
             remediationCommand: `/ip service set ${sName} address=192.168.88.0/24`,
           });
         }
+      }
+    }
+
+    // RouterOS v7 REST API Transport Hardening
+    if (webserver) {
+      const isPlainRest = webserver['rest-plain'] === true || webserver['rest-plain'] === 'true' || webserver['rest-plain'] === 'yes';
+      const wwwService = services.find((s) => s.name === 'www');
+      const wwwActive = wwwService && wwwService.disabled !== true && wwwService.disabled !== 'true';
+
+      if (isPlainRest && wwwActive) {
+        items.push({
+          pillar: 'Pillar 2: Service Hardening',
+          title: 'REST API Cleartext Transport (rest-plain)',
+          status: 'WARN',
+          detail: 'RouterOS v7 webserver has rest-plain=yes enabled while HTTP WWW service is active. REST API queries and credentials can be intercepted in cleartext.',
+          recommendation: 'Disable cleartext REST API via /ip/service/webserver set rest-plain=no to enforce HTTPS for REST operations.',
+          remediationCommand: '/ip service webserver set rest-plain=no',
+        });
+      } else if (!isPlainRest) {
+        items.push({
+          pillar: 'Pillar 2: Service Hardening',
+          title: 'REST API Transport Security',
+          status: 'PASS',
+          detail: 'RouterOS v7 cleartext REST API is disabled (rest-plain=no). REST queries require TLS encryption.',
+        });
       }
     }
 
@@ -271,6 +297,32 @@ export class SecurityAuditor {
           status: 'PASS',
           detail: 'All configured bridges have active Spanning Tree Protocol (RSTP/MSTP) enabled.',
         });
+      }
+
+      // Dynamic ARP Inspection (DAI) & DHCP Snooping Validation (RouterOS v7.25+ MTCSWE)
+      for (const b of bridges) {
+        const dhcpSnooping = b['dhcp-snooping'] === true || b['dhcp-snooping'] === 'true' || b['dhcp-snooping'] === 'yes';
+        const arpInspection = b['arp-inspection'] === true || b['arp-inspection'] === 'true' || b['arp-inspection'] === 'yes';
+
+        if (dhcpSnooping) {
+          if (!arpInspection) {
+            items.push({
+              pillar: 'Pillar 9: Layer 2 Loop Protection',
+              title: `Bridge [${b.name}] Dynamic ARP Inspection (DAI)`,
+              status: 'WARN',
+              detail: `Bridge '${b.name}' has DHCP snooping enabled, but Dynamic ARP Inspection (arp-inspection) is disabled. Hosts remain vulnerable to ARP spoofing/poisoning.`,
+              recommendation: 'Enable Dynamic ARP Inspection (DAI) on the snooped bridge.',
+              remediationCommand: `/interface bridge set [find name="${b.name}"] arp-inspection=yes`,
+            });
+          } else {
+            items.push({
+              pillar: 'Pillar 9: Layer 2 Loop Protection',
+              title: `Bridge [${b.name}] Dynamic ARP Inspection (DAI)`,
+              status: 'PASS',
+              detail: `Bridge '${b.name}' has Dynamic ARP Inspection (DAI) active with DHCP snooping.`,
+            });
+          }
+        }
       }
     } else {
       items.push({

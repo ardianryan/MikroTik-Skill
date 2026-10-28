@@ -21,6 +21,7 @@ import type {
   PoeItem,
   QueueItem,
   WirelessClientItem,
+  WebServerSettings,
 } from './types.js';
 
 export class ConnectionManager {
@@ -398,6 +399,14 @@ export class ConnectionManager {
       // None
     }
     return [];
+  }
+
+  async getWebServerSettings(): Promise<WebServerSettings | null> {
+    try {
+      return await this.restClient.getWebServerSettings();
+    } catch {
+      return null;
+    }
   }
 
   async restRequest<T>(endpoint: string, method: string = 'GET', body?: unknown): Promise<T> {

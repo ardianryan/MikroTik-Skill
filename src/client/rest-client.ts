@@ -15,6 +15,7 @@ import type {
   ContainerItem,
   AdlistItem,
   InterfaceTrafficMonitor,
+  WebServerSettings,
 } from './types.js';
 
 export class RouterOsRestClient {
@@ -61,7 +62,7 @@ export class RouterOsRestClient {
 
       if (!response.ok) {
         if (response.status === 401) {
-          throw new Error('401 Unauthorized: Username atau Password Salah');
+          throw new Error('401 Unauthorized: Invalid Username or Password');
         }
         const errorText = await response.text();
         throw new Error(`RouterOS REST Error (${response.status}): ${errorText}`);
@@ -231,6 +232,18 @@ export class RouterOsRestClient {
 
   async getIpv6Filters(): Promise<FirewallFilterRule[]> {
     return this.request<FirewallFilterRule[]>('/ipv6/firewall/filter');
+  }
+
+  async getWebServerSettings(): Promise<WebServerSettings | null> {
+    try {
+      const res = await this.request<WebServerSettings | WebServerSettings[]>('/ip/service/webserver');
+      if (Array.isArray(res)) {
+        return res[0] ?? null;
+      }
+      return res ?? null;
+    } catch {
+      return null;
+    }
   }
 }
 

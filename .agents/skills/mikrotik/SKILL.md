@@ -64,8 +64,8 @@ All AI agents interacting with or generating configurations for MikroTik devices
    - Never output real MAC addresses, hardware serial numbers, software IDs, passwords, shared secrets, WireGuard private keys, ZeroTier network IDs, or Cloudflare tunnel tokens.
    - Always invoke `mikrotik_export_sanitized_config` or `mtik backup --sanitize` before sharing router output.
 7. **Reference Hierarchy (Local Skill First, Web Docs as Last Resort):**
-   - **Tier 1 (Utama / Primary Knowledge):** Always consult and utilize the instructions, runbooks, and architectures embedded in this skill (`SKILL.md` and `references/*.md`). Do not waste context or network bandwidth performing web scrapes if the topic is already covered locally.
-   - **Tier 2 (Fallback / Opsi Terakhir):** Querying official live web documentation (`https://manual.mikrotik.com/llms.txt`, `https://manual.mikrotik.com/docs/<path>.md`, or `/docs/cli-reference/`) is strictly reserved as a fallback/last-resort mechanism when encountering unlisted hardware switch chip capabilities, emerging RouterOS v7 minor release features, or properties missing from the local skill.
+   - **Tier 1 (Default / Primary Knowledge):** Always consult and utilize the instructions, runbooks, and architectures embedded in this skill (`SKILL.md` and `references/*.md`). Do not waste context or network bandwidth performing web scrapes if the topic is already covered locally.
+   - **Tier 2 (Fallback / Last Resort):** Querying official live web documentation (`https://manual.mikrotik.com/llms.txt`, `https://manual.mikrotik.com/docs/<path>.md`, or `/docs/cli-reference/`) is strictly reserved as a fallback/last-resort mechanism when encountering unlisted hardware switch chip capabilities, emerging RouterOS v7 minor release features, or properties missing from the local skill.
 
 ---
 

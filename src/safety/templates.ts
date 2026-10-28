@@ -29,7 +29,7 @@ add name=bond-core slaves=ether1,ether2 mode=802.3ad \\
     transmit-hash-policy=layer-3-and-4 lacp-rate=fast min-links=1 link-monitoring=mii
 
 /interface bridge
-add name=bridge1 vlan-filtering=no igmp-snooping=yes mld-snooping=yes protocol-mode=rstp
+add name=bridge1 vlan-filtering=no igmp-snooping=yes mld-snooping=yes dhcp-snooping=yes arp-inspection=yes protocol-mode=rstp
 
 /interface bridge port
 add bridge=bridge1 interface=bond-core frame-types=admit-only-vlan-tagged ingress-filtering=yes
@@ -171,6 +171,9 @@ set www disabled=yes
 /tool mac-server set allowed-interface-list=LAN
 /tool mac-server mac-winbox set allowed-interface-list=LAN
 /tool mac-server ping set enabled=no
+
+# RouterOS v7 REST API Hardening
+/ip service webserver set rest-plain=no
 
 # Port Scan Defense (PSD) Auto-ban
 /ip firewall filter

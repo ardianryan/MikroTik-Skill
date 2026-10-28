@@ -116,6 +116,19 @@ export class RouterOsLinter {
         });
       }
 
+      // Legacy RouterOS v6 BGP Peer/Instance Syntax
+      if (/^\/routing\s+bgp\s+(peer|instance)\s+add\b/i.test(trimmed)) {
+        findings.push({
+          id: 'LINT-SYN-03',
+          severity: 'WARN',
+          line: lineNum,
+          rawLine: raw,
+          rule: 'Legacy v6 BGP Peer/Instance Syntax',
+          message: 'Legacy RouterOS v6 "/routing bgp peer|instance" detected. RouterOS v7 requires "/routing bgp connection add".',
+          remediation: 'Transpile to RouterOS v7 syntax: /routing bgp connection add name=... local.role=... remote.address=...',
+        });
+      }
+
       // Gateway route interface scoping (e.g. gateway=192.168.1.1%ether1)
       if (/\/ip\s+route\s+add\b.*?\bgateway=[^\s]+%/i.test(trimmed)) {
         findings.push({
@@ -168,6 +181,32 @@ export class RouterOsLinter {
           rule: 'Insecure Plaintext Management Service Enabled',
           message: `Insecure plaintext service enabled (${trimmed.includes('telnet') ? 'Telnet' : 'FTP'}).`,
           remediation: 'Disable unencrypted services in favor of SSH and HTTPS/Winbox with TLS.',
+        });
+      }
+
+      // Check: Cleartext REST API in Webserver Settings (RouterOS v7)
+      if (/\/ip\s+service\s+webserver\s+set\b.*?\brest-plain=(yes|true)\b/i.test(trimmed)) {
+        findings.push({
+          id: 'LINT-SEC-05',
+          severity: 'WARN',
+          line: lineNum,
+          rawLine: raw,
+          rule: 'Cleartext REST API Subservice Enabled',
+          message: 'Cleartext REST API (rest-plain=yes) is enabled. HTTP REST operations expose authentication credentials in transit.',
+          remediation: 'Disable unencrypted REST API: /ip service webserver set rest-plain=no',
+        });
+      }
+
+      // Check: DHCP Snooping without Dynamic ARP Inspection (RouterOS v7.25+ DAI)
+      if (/\/interface\s+bridge\s+(add|set)\b.*?\bdhcp-snooping=(yes|true)\b/i.test(trimmed) && !/arp-inspection=(yes|true)\b/i.test(trimmed)) {
+        findings.push({
+          id: 'LINT-L2-01',
+          severity: 'INFO',
+          line: lineNum,
+          rawLine: raw,
+          rule: 'Bridge DHCP Snooping Without Dynamic ARP Inspection',
+          message: 'Bridge enables DHCP snooping without Dynamic ARP Inspection (DAI). In RouterOS v7.25+, DAI prevents ARP poisoning.',
+          remediation: 'Enable DAI on the snooped bridge: arp-inspection=yes',
         });
       }
 
