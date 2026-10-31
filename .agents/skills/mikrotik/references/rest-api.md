@@ -19,7 +19,7 @@ Starting with **RouterOS v7.1beta4**, MikroTik introduced a native REST API impl
 ### Authentication
 - Uses standard **HTTP Basic Authentication** (`Authorization: Basic <base64(user:password)>`).
 - Credentials correspond to local RouterOS users (`/user`) or RADIUS-authenticated console accounts.
-- HTTPS connections require a certificate configured under `/ip service set www-ssl certificate=<CERT_NAME>`. For automated agents, TLS validation can be configured to verify the custom CA or allow trusted self-signed certificates.
+- HTTPS connections require a certificate configured under `/ip service set www-ssl certificate=<CERT_NAME>`. Toolkit clients always verify certificates. Configure `ROUTEROS_CA_FILE` with the private CA or explicitly trusted self-signed certificate; do not disable validation. HTTPS failures never downgrade to HTTP. Plain transport requires `ROUTEROS_USE_SSL=false`.
 
 ### JSON Representation (ECMA-404 Compliance)
 - **Stringified Values:** In all JSON responses, object property values are encoded as strings (`"true"`, `"false"`, `"1200"`, `"10.0.0.1/24"`), regardless of whether the internal type is a boolean, integer, or IP address.
@@ -118,7 +118,7 @@ Content-Type: application/json
   - **Traffic Monitor:** Add `"once": ""` (or `true`)
 
 ### 4.3. Script Execution (`/rest/execute`)
-Execute arbitrary RouterOS script blocks atomically:
+Execute RouterOS script blocks. Execution is not atomic: earlier commands may remain applied after a later command fails. These protocol examples describe the native router API, not public MCP endpoints. Toolkit raw writes require a reviewed recovery script, interactive approval, and a verified 30-second watchdog:
 ```http
 POST /rest/execute
 Content-Type: application/json
@@ -129,7 +129,7 @@ Content-Type: application/json
 ```
 
 ### 4.4. Configuration Export (`/rest/export`)
-Generate compact configuration files:
+Generate compact configuration files. A filename containing “sanitized” does not sanitize router output: run exports through `ConfigSanitizer` and review them before sharing. Setting `file` writes on the router and requires the mutation workflow:
 ```http
 POST /rest/export
 Content-Type: application/json

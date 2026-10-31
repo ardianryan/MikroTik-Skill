@@ -1,3 +1,4 @@
+import { ConfigSanitizer } from './sanitizer.js';
 import type { ConnectionManager } from '../client/connection-manager.js';
 import type { AuditItem, AuditReport, SystemResource, DnsSettings, NtpClient } from '../client/types.js';
 
@@ -10,18 +11,21 @@ export class SecurityAuditor {
 
   async runFullAudit(): Promise<AuditReport> {
     const items: AuditItem[] = [];
+    const failedReads: string[] = [];
+    const missing = <T>(name: string, fallback: T) => () => { failedReads.push(name); return fallback; };
+    const enabled = (value: boolean | string | undefined) => value === true || value === 'true' || value === 'yes';
 
     const [resource, dns, services, filters, mangle, tables, ntp, bridges, ipv6Filters, webserver] = await Promise.all([
-      this.conn.getResource().catch(() => ({} as SystemResource)),
-      this.conn.getDnsSettings().catch(() => ({} as DnsSettings)),
-      this.conn.getIpServices().catch(() => []),
-      this.conn.getFirewallFilters().catch(() => []),
-      this.conn.getMangleRules().catch(() => []),
-      this.conn.getRoutingTables().catch(() => []),
-      this.conn.getNtpClient().catch(() => ({} as NtpClient)),
-      typeof this.conn.getBridges === 'function' ? this.conn.getBridges().catch(() => []) : Promise.resolve([]),
-      typeof this.conn.getIpv6Filters === 'function' ? this.conn.getIpv6Filters().catch(() => []) : Promise.resolve([]),
-      typeof this.conn.getWebServerSettings === 'function' ? this.conn.getWebServerSettings().catch(() => null) : Promise.resolve(null),
+      this.conn.getResource().catch(missing('resource', ({} as SystemResource))),
+      this.conn.getDnsSettings().catch(missing('dns', ({} as DnsSettings))),
+      this.conn.getIpServices().catch(missing('services', [])),
+      this.conn.getFirewallFilters().catch(missing('filters', [])),
+      this.conn.getMangleRules().catch(missing('mangle', [])),
+      this.conn.getRoutingTables().catch(missing('tables', [])),
+      this.conn.getNtpClient().catch(missing('ntp', ({} as NtpClient))),
+      typeof this.conn.getBridges === 'function' ? this.conn.getBridges().catch(missing('bridges', [])) : Promise.resolve([]),
+      typeof this.conn.getIpv6Filters === 'function' ? this.conn.getIpv6Filters().catch(missing('ipv6Filters', [])) : Promise.resolve([]),
+      typeof this.conn.getWebServerSettings === 'function' ? this.conn.getWebServerSettings().catch(missing('webserver', null)) : Promise.resolve(null),
     ]);
 
     if (!resource || (!resource.version && !resource.platform && !resource.board)) {
@@ -36,7 +40,9 @@ export class SecurityAuditor {
           f.chain === 'input' &&
           f.action === 'drop' &&
           (f.protocol === 'udp' || !f.protocol) &&
-          (f['dst-port'] === '53' || f['dst-port']?.includes('53'))
+          f['dst-port'] === '53' &&
+          !enabled(f.disabled) && f['in-interface-list'] === 'WAN' && !f['src-address'] && !f['src-address-list'] &&
+          !filters.slice(0, filters.findIndex((entry) => entry === f)).some((earlier) => !enabled(earlier.disabled) && earlier.chain === 'input' && ['accept', 'jump', 'return'].includes(earlier.action))
       );
 
       if (dropsWanDns) {
@@ -208,7 +214,7 @@ export class SecurityAuditor {
 
     // Pillar 6: Firewall Filter Input Protection
     const dropsInvalidInput = filters.some(
-      (f) => f.chain === 'input' && f.action === 'drop' && f['connection-state']?.includes('invalid')
+      (f) => !enabled(f.disabled) && f.chain === 'input' && f.action === 'drop' && f['connection-state']?.split(',').includes('invalid')
     );
     if (dropsInvalidInput) {
       items.push({
@@ -257,7 +263,7 @@ export class SecurityAuditor {
         remediationCommand: '/ipv6 firewall filter add chain=input connection-state=established,related action=accept; /ipv6 firewall filter add chain=input in-interface-list=!LAN action=drop comment="Drop WAN IPv6 Input"',
       });
     } else {
-      const hasIpv6Drop = ipv6Filters.some((f) => f.action === 'drop' && (f.chain === 'input' || f.chain === 'forward'));
+      const hasIpv6Drop = ipv6Filters.some((f) => !enabled(f.disabled) && f.action === 'drop' && (f.chain === 'input' || f.chain === 'forward'));
       if (hasIpv6Drop) {
         items.push({
           pillar: 'Pillar 8: IPv6 Security',
@@ -335,7 +341,7 @@ export class SecurityAuditor {
 
     // Pillar 10: Conntrack Transit Integrity (MTCTCE)
     const dropsInvalidForward = filters.some(
-      (f) => f.chain === 'forward' && f.action === 'drop' && f['connection-state']?.includes('invalid')
+      (f) => !enabled(f.disabled) && f.chain === 'forward' && f.action === 'drop' && f['connection-state']?.split(',').includes('invalid')
     );
     if (dropsInvalidForward) {
       items.push({
@@ -355,22 +361,54 @@ export class SecurityAuditor {
       });
     }
 
+    const dependencies: Record<string, string[]> = {
+      'Pillar 1': ['dns', 'filters'], 'Pillar 2': ['services'], 'Pillar 3': ['mangle'],
+      'Pillar 4': ['tables', 'mangle'], 'Pillar 5': ['ntp'], 'Pillar 6': ['filters'],
+      'Pillar 8': ['ipv6Filters'], 'Pillar 9': ['bridges'], 'Pillar 10': ['filters'],
+    };
+    for (const item of items) {
+      const names = dependencies[item.pillar.split(':')[0] || ''] || [];
+      if (names.some((name) => failedReads.includes(name))) {
+        item.status = 'UNKNOWN';
+        item.detail = 'Required configuration could not be read; this check is incomplete.';
+        delete item.remediationCommand;
+        delete item.recommendation;
+      }
+    }
+    for (const item of items) {
+      if (item.status !== 'PASS') continue;
+      if (item.title === 'IPv6 Firewall Protection') {
+        const guarded = ['input', 'forward'].every((chain) => ipv6Filters.some((rule) => !enabled(rule.disabled) && rule.chain === chain && rule.action === 'drop' && ['WAN', '!LAN'].includes(rule['in-interface-list'] || '') && !rule.protocol && !rule['dst-port'] && !rule['connection-state']));
+        if (!guarded) { item.status = 'UNKNOWN'; item.detail = 'Existing IPv6 drops do not establish complete input and forward protection.'; }
+      }
+      if (['Drop Invalid Connections', 'Drop Invalid Forward Packets'].includes(item.title)) {
+        const chain = item.title === 'Drop Invalid Connections' ? 'input' : 'forward';
+        const index = filters.findIndex((rule) => !enabled(rule.disabled) && rule.chain === chain && rule.action === 'drop' && rule['connection-state']?.split(',').includes('invalid'));
+        const rule = filters[index];
+        if (!rule || rule['in-interface'] || rule['in-interface-list'] || rule.protocol || rule['dst-port'] || rule['src-address'] || rule['dst-address'] || filters.slice(0, index).some((earlier) => !enabled(earlier.disabled) && earlier.chain === chain && ['accept', 'jump', 'return'].includes(earlier.action) && (!earlier['connection-state'] || earlier['connection-state'].includes('invalid')))) {
+          item.status = 'UNKNOWN'; item.detail = 'Rule scope and ordering do not establish complete invalid-packet protection.';
+        }
+      }
+    }
+    for (const name of failedReads) items.push({ pillar: 'Data collection', title: `Read unavailable: ${name}`, status: 'UNKNOWN', detail: 'The audit could not inspect this subsystem.' });
     const hasCritical = items.some((i) => i.status === 'CRITICAL');
     const hasWarn = items.some((i) => i.status === 'WARN');
-    const overallScore = hasCritical ? 'VULNERABLE' : hasWarn ? 'NEEDS_ATTENTION' : 'SECURE';
+    const incomplete = failedReads.some((name) => name !== 'webserver') || items.some((item) => item.status === 'UNKNOWN' && item.pillar !== 'Data collection');
+    const overallScore = hasCritical ? 'VULNERABLE' : incomplete ? 'INCOMPLETE' : hasWarn ? 'NEEDS_ATTENTION' : 'SECURE';
 
     // Assign stable numbered finding IDs (F-01, F-02, ...)
     items.forEach((item, index) => {
       item.id = `F-${String(index + 1).padStart(2, '0')}`;
     });
 
-    return {
+    return ConfigSanitizer.sanitizeJson({
+      completeness: { complete: !incomplete, failedReads },
       timestamp: new Date().toISOString(),
       routerIdentity: resource.board || resource.platform || 'MikroTik RouterOS',
       firmwareVersion: resource.version || 'v7.x',
       overallScore,
       items,
-    };
+    });
   }
 
   static formatMarkdownReport(report: AuditReport): string {
@@ -383,6 +421,7 @@ export class SecurityAuditor {
     const warnCount = report.items.filter((i) => i.status === 'WARN').length;
     const passCount = report.items.filter((i) => i.status === 'PASS').length;
     const infoCount = report.items.filter((i) => i.status === 'INFO').length;
+    const unknownCount = report.items.filter((i) => i.status === 'UNKNOWN').length;
 
     lines.push(`| Severity | Count | Status Summary |`);
     lines.push(`|---|:---:|---|`);
@@ -390,6 +429,7 @@ export class SecurityAuditor {
     lines.push(`| 🟡 WARN | ${warnCount} | Unhardened service or suboptimal configuration |`);
     lines.push(`| 🟢 PASS | ${passCount} | Compliant with RouterOS v7 security standard |`);
     lines.push(`| 🔵 INFO | ${infoCount} | Informational advisory |`);
+    lines.push(`| UNKNOWN | ${unknownCount} | Configuration could not be verified |`);
     lines.push(`\n---`);
 
     lines.push(`\n## Detailed Numbered Findings\n`);
@@ -397,7 +437,7 @@ export class SecurityAuditor {
     lines.push(`|---|---|:---:|---|---|`);
 
     for (const item of report.items) {
-      const badge = item.status === 'CRITICAL' ? '🔴 CRITICAL' : item.status === 'WARN' ? '🟡 WARN' : item.status === 'PASS' ? '🟢 PASS' : '🔵 INFO';
+      const badge = item.status === 'CRITICAL' ? '🔴 CRITICAL' : item.status === 'WARN' ? '🟡 WARN' : item.status === 'PASS' ? '🟢 PASS' : item.status === 'UNKNOWN' ? 'UNKNOWN' : '🔵 INFO';
       const rec = item.recommendation ? `<br>👉 *Rec: ${item.recommendation}*` : '';
       lines.push(`| **${item.id || '-'}** | ${item.pillar} | ${badge} | **${item.title}** | ${item.detail}${rec} |`);
     }
@@ -415,7 +455,7 @@ export class SecurityAuditor {
       lines.push('```');
     }
 
-    return lines.join('\n');
+    return ConfigSanitizer.sanitizeText(lines.join('\n'));
   }
 }
 

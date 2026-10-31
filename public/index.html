@@ -1666,10 +1666,13 @@ Rules:
                 <strong>[${f.id}] ${f.rule}</strong>
                 <span class="lint-badge ${f.severity === 'CRITICAL' ? 'badge-crit' : f.severity === 'HIGH' ? 'badge-high' : 'badge-warn'}">Line ${f.line} &bull; ${f.severity}</span>
               </div>
-              <p style="font-size:0.85rem; color:var(--text); margin-bottom:0.35rem;">${f.message}</p>
-              <div style="font-family:var(--font-mono); font-size:0.8rem; color:var(--muted); background:#05070a; padding:0.4rem 0.6rem; border-radius:4px; margin-bottom:0.35rem;">${f.rawLine.trim()}</div>
-              <div style="font-size:0.82rem; color:var(--accent);"><strong>Remediation:</strong> <code>${f.remediation}</code></div>
+              <p style="font-size:0.85rem; color:var(--text); margin-bottom:0.35rem;"><span class="lint-message"></span></p>
+              <div style="font-family:var(--font-mono); font-size:0.8rem; color:var(--muted); background:#05070a; padding:0.4rem 0.6rem; border-radius:4px; margin-bottom:0.35rem;"><span class="lint-source"></span></div>
+              <div style="font-size:0.82rem; color:var(--accent);"><strong>Remediation:</strong> <code><span class="lint-remediation"></span></code></div>
             `;
+            card.querySelector('.lint-message').textContent = f.message;
+            card.querySelector('.lint-remediation').textContent = f.remediation;
+            card.querySelector('.lint-source').textContent = f.rawLine.trim();
             list.appendChild(card);
           });
         } else {

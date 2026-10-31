@@ -27,6 +27,41 @@
 
 ---
 
+## Security behavior
+
+The public HTTP MCP is a knowledge service only. It never opens a router connection or lists local devices, even when router credentials exist in its environment. Run `mtik mcp` or `mtik-mcp` locally for router operations.
+
+Router mutations default to dry-run. Applying through CLI requires `--apply`, selected audit IDs via `--findings F-01,F-02` or a manual `--reason`, and an interactive terminal confirmation. Raw scripts and REST writes additionally require `--rollback '<script>'`. A boolean confirmation flag cannot bypass the prompt. MCP clients must support form elicitation for apply; other clients can preview and use the interactive CLI to execute.
+
+```sh
+mtik route-force --ip 192.168.88.10 --table to_ISP1 --dry-run
+mtik --apply --reason 'Approved client routing change' route-force --ip 192.168.88.10 --table to_ISP1
+mtik --apply --reason 'Approved maintenance' --rollback '/system identity set name="previous-name"' exec '/system identity set name="Core-Router"'
+```
+
+A verified 30-second router scheduler is armed before a write. Configuration or target changes after review cancel execution. Raw script rollback is operator supplied and does not make script execution atomic. A failed health check or disarm is reported as an unresolved operation, not successful recovery.
+
+TLS certificate verification is enabled. Set `ROUTEROS_CA_FILE` to a PEM CA bundle for private certificates. HTTPS failures never trigger HTTP downgrade; `ROUTEROS_USE_SSL=false` explicitly opts into unencrypted transport. Writes are never automatically retried on another transport.
+
+HTTP binds to `127.0.0.1` by default. Requests are limited to 256 KiB, script/config text to 128 KiB, and JSON structure to 4,096 elements and depth 16. PCC accepts 2–16 WANs, positive integer weights up to 10,000, and at most 256 normalized streams. SSE permits 100 concurrent sessions per process, expiring after 15 minutes. Configure `serverUrl` and `allowedOrigins` on `MikroTikHttpServer` when running behind a proxy; process-local limits require additional deployment-wide controls for multiple instances.
+
+Audit results include `UNKNOWN` and completeness information. Failed required reads produce `INCOMPLETE` unless a confirmed critical finding already makes the result `VULNERABLE`. An audit score does not certify the absence of firmware CVEs.
+
+WireGuard provisioning intentionally returns private client configuration and QR data. Treat those artifacts as credentials; CLI configuration files are written with mode `0600`. Ordinary logs, errors, diffs, and audit/linter responses redact secrets. Hotspot generation does not create default user accounts.
+
+The TUI requires interactive stdin and stdout. Launch `mtik tui --offline` to use local tools without resolving a router target or opening a router connection. From the gateway, Ctrl+O also opens offline tools. Router selection and live audits require restarting without `--offline`.
+
+- **Config Linter:** press Enter to open a local `.rsc` file (regular UTF-8 file, up to 128 KiB), use Up/Down to inspect findings, and `e` to export a sanitized JSON report. Static checks are limited to supported patterns and do not establish that a configuration is secure.
+- **PCC:** enter 2–16 WAN rows such as `ISP1:2:192.168.1.1,ISP2:1:192.168.2.1`, a LAN interface, and a classifier. Weights and normalized stream counts use the shared limits. The result shows stream allocation and a script preview.
+- **WireGuard:** edit the server public key, endpoint, client address/name, interface, DNS, and allowed IPs. Export creates `client.conf` and `router-peer.rsc`; both contain provisioning secrets and use mode `0600`. The TUI preview masks secrets.
+- **Hotspot:** edit venue, authentication model, portal DNS, HTTPS authentication URL, and trial setting. All-in-one requires an operator-supplied authentication URL. Export creates both HTML pages and the RouterOS script; it does not deploy them.
+
+In forms, Tab/Up/Down changes fields, Ctrl+U clears a field, Enter submits, and Escape cancels while preserving any previously generated result. Outside forms, Tab changes navigation/content focus, Escape resets the current tool, and `e` opens export when a result exists. Ctrl+C or Ctrl+Q exits from any view. Exports require a **new directory** beneath an existing parent, refuse existing paths and symlinks, include SHA256 checksums, and use directory/file permissions `0700`/`0600`. Export failure leaves the generated result available to retry.
+
+Traffic Monitor no longer displays illustrative rates. Live TUI traffic monitoring is deferred pending router integration; the existing `mtik monitor` CLI remains available for configured routers. Terminal windows smaller than 60×24 show a resize prompt. Run `python3 -I scripts/verify-isolated.py tui-smoke` to check startup, resize, offline entry, form exit, Ctrl+C, and SIGTERM in a pseudo-terminal.
+
+For checks on macOS, run `python3 -I scripts/verify-isolated.py typecheck`, `build`, and `test`. The runner uses a disposable home/build directory, dummy router credentials, restricted filesystem writes, and loopback-only networking. It limits CPU time, child processes, file size, wall time, and the Node heap; macOS does not provide a hard native-memory or disk quota through this runner. Use a resource-limited container or VM for hostile-code testing.
+
 ## Advisory, Scope & Operational Philosophy
 
 ### Built to Assist, Not Replace Certified Engineers
@@ -57,7 +92,7 @@ Managing MikroTik routers in multi-WAN environments often involves repetitive `.
 **MikroTik NetDevOps Toolkit & MCP Server** is a comprehensive, production-grade automation ecosystem engineered for both human engineers and AI coding assistants:
 
 1. **Autonomous CLI Toolkit (`mtik`)**: Execute audits, monitor bandwidth, inspect fleet inventory, manage PoE, and generate configurations directly from terminal or CI/CD pipelines. Available zero-install via `npx mikrotik-skill`.
-2. **Model Context Protocol (MCP) Server (`mtik-mcp`)**: Native stdio and remote SSE server equipping AI coding assistants (Antigravity, Cursor, Windsurf, Claude Desktop, VS Code) with 22 validated tools to safely inspect and automate RouterOS v7 without hallucinations.
+2. **Model Context Protocol (MCP) Server (`mtik-mcp`)**: Local stdio server for router diagnostics and guarded operations, plus a public HTTP/SSE server exposing only knowledge, generation, sanitization, and validation tools.
 3. **Interactive Web Workbench & REST Gateway**: Dark-titanium browser studio featuring an interactive Captive Hotspot Portal Studio, WireGuard QR Code Generator, Asymmetric PCC Calculator, and OpenAPI 3.1.0 serverless endpoints.
 4. **Certified AI Knowledge Engine (The Brain)**: 20+ specialized runbooks, hardware architecture matrices, and kernel rules residing in `.agents/skills/mikrotik/` providing exact grounding for AI pair programming.
 
@@ -66,10 +101,10 @@ Managing MikroTik routers in multi-WAN environments often involves repetitive `.
 ## Key Features
 
 - **Interactive Fullscreen TUI Dashboard (`mtik tui` / `mtik`):**
-  - Fullscreen terminal interface with dual-pane layout: live hardware gauges (E60iUGS/ARM/MMIPS CPU & Memory), interface overview, and step-by-step interactive configuration wizards (Multi-WAN PCC, WireGuard QR, Hotspot Portals, and 10-Pillar Security Audit). Runs automatically in interactive terminals!
+  - Fullscreen terminal interface with router telemetry/audits and offline tools: editable PCC, WireGuard and Hotspot generators, local configuration linting, and private file export. Use `mtik tui --offline` without a router. Live TUI traffic monitoring is deferred.
 - **Dual-Engine Connection:**
-  - **Primary:** High-speed RouterOS v7 native REST API (`/rest`, HTTPS/HTTP) with structured JSON responses and self-signed certificate tolerance.
-  - **Automatic Fallback:** Seamless fallback to RouterOS native binary API socket (Port 8728 / 8729 SSL) if WebFig or REST is disabled.
+  - **Primary:** RouterOS v7 REST API (`/rest`) with certificate verification; use `ROUTEROS_CA_FILE` to trust a private CA. Plain HTTP requires an explicit `ROUTEROS_USE_SSL=false`.
+  - **Transport Selection:** Read operations can discover REST or native API availability. TLS applies to the binary API on port 8729; uncertain writes are never retried through another transport.
 - **Automated 10-Pillar Security Audit:**
   - One-command audit evaluating DNS open resolvers, exposed administrative services, missing firewall input drops, IPv6 firewall parity, bridge STP loop protection, NTP clock drift, and Mangle Hairpin NAT leak risks.
 - **Deterministic Mangle Order Engine:**
@@ -77,9 +112,9 @@ Managing MikroTik routers in multi-WAN environments often involves repetitive `.
 - **FIB Integrity Validation:**
   - Verifies custom routing tables are declared in `/routing table` with `fib=yes` before any Mangle rule is injected.
 - **30-Second Safe-Mode Watchdog:**
-  - Automatically arms a temporary `/system schedule` rollback timer before critical changes. If connection is interrupted or unverified within 30 seconds, the router reverts the change automatically.
+  - Creates and reads back a temporary `/system scheduler` entry before writes. Its operator-reviewed recovery script runs after 30 seconds unless disarmed. Recovery must be verified; arbitrary scripts are not atomic transactions.
 - **Auto-Sanitizer Export (`mtik backup --sanitize`):**
-  - Exports structured JSON snapshots with automatic redaction of MAC addresses (`XX:XX:XX...`), serial numbers, passwords, shared secrets, and VPN network IDs—making exports 100% safe to share with AI or public forums.
+  - Exports structured JSON snapshots with automatic redaction of MAC addresses (`XX:XX:XX...`), serial numbers, passwords, shared secrets, and VPN network IDs—reducing secret exposure. Review exports for sensitive topology and business data before sharing.
 - **Real-Time Terminal Bandwidth Monitor (`mtik monitor`):**
   - Live throughput meter in the terminal tracking RX/TX (Mbps/Kbps) across WAN and LAN interfaces.
 - **Container & DNS Adlist Management:**
@@ -121,15 +156,16 @@ flowchart TD
     end
 
     U1 -->|stdio| G1
-    U2 -->|HTTPS REST Actions / Bearer Auth| G2
+    U2 -->|HTTPS knowledge tools| G2
     U3 -->|Terminal Invocations| G3
 
     G1 --> Engine
-    G2 --> Engine
+    G2 --> E3
+    G2 --> E5
     G3 --> Engine
 
     Engine -->|Primary Transport| R1
-    Engine -.->|Auto Fallback| R2
+    Engine -.->|Read discovery or selected transport| R2
 ```
 
 ### 2. Use Case Flow: Safe Mutation with 30s Watchdog Rollback
@@ -147,7 +183,10 @@ sequenceDiagram
     Router-->>Engine: Return tables & mangle list
     Engine->>Engine: Verify 'to_ISP1' registered with fib=yes
     Engine->>Engine: Calculate placement index (Tier 1: after bypass, before PCC)
-    Engine->>Watchdog: Arm 30-second rollback watchdog
+    Engine-->>Engineer: Audit findings and sanitized operation/rollback preview
+    Engineer->>Engine: Select findings or reason and confirm interactively
+    Engine->>Router: Recheck target and reviewed configuration
+    Engine->>Watchdog: Arm and verify 30-second rollback watchdog
     Watchdog->>Router: Inject temporary /system schedule rollback
     Engine->>Router: Add mangle rule at calculated index
     Engine->>Router: Ping / Heartbeat test router connectivity
@@ -156,8 +195,8 @@ sequenceDiagram
         Watchdog->>Router: Remove temporary rollback schedule
         Engine-->>Engineer: Mutation applied successfully & verified
     else Connection Interrupted / Heartbeat Failed
-        Note over Router: 30s timer expires -> Router automatically self-reverts!
-        Router-->>Engineer: Router connection preserved without lockout
+        Note over Router: Watchdog attempts the reviewed recovery script
+        Engine-->>Engineer: Outcome uncertain; verify router state and recovery
     end
 ```
 
@@ -165,14 +204,14 @@ sequenceDiagram
 
 ## Verified Hardware & Compatibility Matrix
 
-This toolkit is continuously validated against physical MikroTik RouterOS v7 hardware across multiple processor architectures (ARM 32-bit, ARM64, and MMIPS):
+The following table records historical project hardware targets. This maintenance was verified with dummy credentials, mocked routers, and pseudo-terminals; none of these physical devices or firmware versions was revalidated. Treat the table as historical context, not evidence for the current changes.
 
 | Device Model | Part Number | CPU & Architecture | RAM / Flash | Tested RouterOS | Primary Transport | Validation Status |
 | :--- | :--- | :--- | :--- | :--- | :--- | :---: |
-| **MikroTik hEX S (New Refresh)** | `E60iUGS` | **ARM** (MediaTek EN7562CT Dual-Core 950 MHz) | 512 MB / 128 MB | **v7.24.4** | REST API & Native API (:8728) | [![Pass](https://img.shields.io/badge/Status-PASS-brightgreen)](https://mikrotik.com) |
-| **MikroTik hEX refresh** | `E50UG` | **ARM64** (MediaTek EN7562CT Dual-Core 950 MHz) | 512 MB / 128 MB | **v7.23.7** | REST API & Native API (:8728) | [![Pass](https://img.shields.io/badge/Status-PASS-brightgreen)](https://mikrotik.com) |
-| **MikroTik RB1100AHx4** | `RB1100AHx4` | **ARM 32-bit** (Annapurna Alpine AL21400 Quad-Core 1.4 GHz) | 1 GB / 128 MB | **v7.23.7** | REST API & Native API (:8728) | [![Pass](https://img.shields.io/badge/Status-PASS-brightgreen)](https://mikrotik.com) |
-| **MikroTik hEX S (Legacy)** | `RB760iGS` | **MMIPS** (MediaTek MT7621A Dual-Core 880 MHz) | 256 MB / 16 MB | **v7.24.4** | REST API & Native API (:8728) | [![Pass](https://img.shields.io/badge/Status-PASS-brightgreen)](https://mikrotik.com) |
+| **MikroTik hEX S (New Refresh)** | `E60iUGS` | **ARM** (MediaTek EN7562CT Dual-Core 950 MHz) | 512 MB / 128 MB | **v7.24.4** | REST API & Native API (:8728) | Not revalidated |
+| **MikroTik hEX refresh** | `E50UG` | **ARM64** (MediaTek EN7562CT Dual-Core 950 MHz) | 512 MB / 128 MB | **v7.23.7** | REST API & Native API (:8728) | Not revalidated |
+| **MikroTik RB1100AHx4** | `RB1100AHx4` | **ARM 32-bit** (Annapurna Alpine AL21400 Quad-Core 1.4 GHz) | 1 GB / 128 MB | **v7.23.7** | REST API & Native API (:8728) | Not revalidated |
+| **MikroTik hEX S (Legacy)** | `RB760iGS` | **MMIPS** (MediaTek MT7621A Dual-Core 880 MHz) | 256 MB / 16 MB | **v7.24.4** | REST API & Native API (:8728) | Not revalidated |
 
 > [!NOTE]
 > **E60iUGS (hEX S 2024–2025) Architecture & Hardware Notes:**
@@ -197,10 +236,10 @@ Run any command or launch local tools instantly without cloning:
 npx mikrotik-skill status
 
 # Generate high-conversion Captive Hotspot Portal
-npx mikrotik-skill hotspot --type all-in-one --org "Enterprise Guest"
+npx mikrotik-skill hotspot --model voucher --venue "Enterprise Guest" --no-trial
 
 # Generate asymmetric PCC load balancing script
-npx mikrotik-skill pcc --wan "ISP1:100,ISP2:50"
+npx mikrotik-skill pcc --wans "ISP1=2@192.0.2.1,ISP2=1@198.51.100.1"
 
 # Boot stdio MCP server for IDEs
 npx mikrotik-skill mcp
@@ -219,7 +258,7 @@ mtik audit
 ```bash
 git clone https://github.com/ardianryan/MikroTik-Skill.git
 cd MikroTik-Skill
-npm install
+npm ci --ignore-scripts
 npm run build
 npm link
 ```
@@ -274,7 +313,7 @@ Choose the integration method appropriate for your environment:
      }
    }
    ```
-3. Your local AI assistant can now inspect router health, run audits, and safely mutate configurations.
+3. Local tools can inspect router health and run audits. Writes default to dry-run; applying requires an elicitation-capable client, selected findings or a manual reason, a reviewed preview, and the watchdog. Use the interactive CLI when the client cannot provide form elicitation.
 
 ---
 
@@ -284,16 +323,16 @@ Choose the integration method appropriate for your environment:
    mtik prompt -o mikrotik-system-prompt.md
    ```
 2. Paste the contents into the **Instructions** field of your ChatGPT Custom GPT or Claude.ai Project.
-3. The AI assistant generates standard `routeros` script blocks ready to paste directly into WinBox Terminal or execute via:
+3. Review generated `routeros` scripts against your audit findings. Preview raw execution with a manual reason and an explicit recovery script:
    ```bash
-   mtik exec "<command-from-chatgpt>"
+   mtik --reason "Reviewed manual operation" --rollback "<reviewed-recovery-script>" exec "<reviewed-forward-script>"
    ```
 
 ---
 
 ### Remote MCP & Web AI Gateway (`https://mikrotik-skill.vercel.app`)
 
-You can connect your favorite AI IDEs and chat assistants directly to the hosted public Remote MCP and OpenAPI knowledge gateway without installing any software or configuring router credentials:
+The URLs below describe the project’s hosted integration endpoints. This maintenance does not verify or deploy the hosted service. Deploy the updated server before relying on its new boundaries. Public HTTP/SSE tools are knowledge-only and must never receive router credentials:
 
 - **Gateway URL:** `https://mikrotik-skill.vercel.app`
 - **Remote MCP SSE Endpoint:** `https://mikrotik-skill.vercel.app/sse`
@@ -357,6 +396,9 @@ claude mcp add --transport sse mikrotik https://mikrotik-skill.vercel.app/sse
 ```bash
 # Launch interactive Fullscreen TUI Dashboard & Wizards (or run `mtik` directly)
 mtik tui
+
+# Local linter and generators without a router connection
+mtik tui --offline
 mtik ui
 
 # Verify connectivity and active transport (REST vs Binary API)
@@ -369,35 +411,35 @@ mtik status
 mtik audit
 
 # Generate high-conversion Captive Hotspot Portal bundle
-mtik hotspot --type all-in-one --org "Guest Lounge" --currency "IDR"
+mtik hotspot --model voucher --venue "Guest Lounge" --no-trial
 
 # Provision Curve25519 WireGuard client with terminal QR code
-mtik wireguard --client-ip 10.10.0.2/32 --listen-port 13231
+mtik wireguard --name phone --ip 10.10.0.2/32 --endpoint vpn.example.com:13231 --server-pubkey "<router-public-key>" --output phone.conf
 
 # Calculate asymmetric Multi-WAN PCC load balancing script
-mtik pcc --wan "ISP1:100,ISP2:50" --lan "bridge-lan"
+mtik pcc --wans "ISP1=2@192.0.2.1,ISP2=1@198.51.100.1" --lan bridge-lan
 
 # Lint RouterOS configuration script (.rsc) for security and syntax risks
-mtik lint -f /path/to/backup.rsc
+mtik lint /path/to/backup.rsc
 
 # Transpile legacy RouterOS v6 routing filters to modern v7 syntax
-mtik migrate-filter -f /path/to/v6-filters.rsc
+mtik migrate-filter /path/to/v6-filters.rsc
 
 # Fleet Inventory: list and manage multi-router profiles
 mtik devices
 mtik inventory
 
 # Power-cycle PoE port and inspect real-time wattage / voltage
-mtik poe ether5 --cycle
+mtik poe --cycle ether5
 
 # Real-time log triage and security forensic inspection
 mtik logs --topic firewall --limit 50
 
 # Deploy CAKE SQM anti-bufferbloat queues
-mtik queue --interface ether1 --upload 50M --download 100M
+mtik queue --cake --target 192.168.88.0/24 --upload 50M --download 100M
 
 # Inspect connected wireless clients and signal telemetry
-mtik wifi --clients
+mtik wifi
 
 # List firewall mangle rules with index & hierarchy breakdown
 mtik mangle
@@ -422,14 +464,17 @@ mtik container --restart 0
 mtik adlist
 
 # Automatically install MCP server configuration into your local IDEs
-mtik mcp install
+mtik install-mcp
 
 # Generate certified templates across all 10 MikroTik Certification tracks
 mtik template --list
 mtik template mtcswe --output mtcswe-switching.rsc
 
-# Execute arbitrary RouterOS CLI scripts atomically
-mtik exec "/ip/address/print"
+# Read RouterOS records through REST
+mtik rest GET /ip/address
+
+# Preview raw scripts with explicit recovery and a reason (no write by default)
+mtik --reason "Reviewed operation" --rollback "<recovery-script>" exec "<forward-script>"
 
 # Query RouterOS v7 REST endpoints directly
 mtik rest GET /system/resource
@@ -484,7 +529,9 @@ Add this entry to your `mcp_config.json` or `claude_desktop_config.json`:
 }
 ```
 
-### Complete MCP Tools Registry (22 Tools):
+### Local MCP Router and Generator Tools
+
+The table below describes the local stdio tools. Public HTTP/SSE exposes only `mikrotik_generate_template`, `mikrotik_get_chat_prompt`, `mikrotik_sanitize_config`, `mikrotik_validate_routing_mark`, `mikrotik_calculate_pcc`, `mikrotik_provision_wireguard`, `mikrotik_migrate_filter`, `mikrotik_lint_config`, and `mikrotik_generate_hotspot_portal`. Router/inventory tools require local MCP. Provisioning outputs may intentionally contain secrets.
 
 | Tool | Category | Description |
 | :--- | :--- | :--- |
@@ -508,7 +555,7 @@ Add this entry to your `mcp_config.json` or `claude_desktop_config.json`:
 | `mikrotik_manage_poe` | Hardware | Inspect PoE wattage/voltage and power-cycle connected appliances. |
 | `mikrotik_manage_queues` | QoS | Deploy and manage low-latency CAKE / FQ-CoDel anti-bufferbloat queues. |
 | `mikrotik_get_wireless_clients` | Wireless | Query connected Wi-Fi clients, signal strength (RSSI), and PHY rates. |
-| `mikrotik_execute_command` | Execution | Atomically execute arbitrary RouterOS CLI commands. |
+| `mikrotik_execute_command` | Execution | Preview arbitrary RouterOS scripts; apply locally with interactive approval and explicit rollback. |
 | `mikrotik_rest_query` | REST Client | Query RouterOS v7 `/rest/<endpoint>` with GET, POST, PUT, PATCH, DELETE. |
 | `mikrotik_get_chat_prompt` | Knowledge | Retrieve senior network engineer system prompt for ChatGPT and Claude.ai. |
 

@@ -24,10 +24,26 @@ Please send security reports directly to:
 
 | Version | Supported          |
 | :------ | :----------------- |
-| 1.0.x   | :white_check_mark: |
-| < 1.0   | :x:                |
+| Current main / Unreleased | Security fixes under verification; not yet a published release |
+| Published versions through 1.3.0 | Do not assume these contain the Unreleased fixes |
 
 ## Security Design Principles
 - **Zero Credential Leakage:** Sensitive parameters (passwords, auth tokens) are masked across console outputs and error stacks.
-- **Transport Security:** Default preference for TLS-encrypted endpoints (HTTPS port 443 and API-SSL port 8729).
-- **Safe Execution Guards:** All mutation subcommands provide `--dry-run` and visual diff verification before applying changes to physical routers.
+- **Transport Security:** Certificate verification with explicit private-CA trust for TLS endpoints (HTTPS port 443 and API-SSL port 8729).
+- **Safe Execution Guards:** Local mutations default to dry-run. Applying requires interactive approval, a reviewed target/state, and a verified 30-second watchdog. Raw writes require explicit rollback; arbitrary scripts do not become atomic transactions.
+
+## Repository incident follow-up
+
+Two workflows containing secret-exfiltration commands were removed during this maintenance. Their removal does not establish whether previous runs leaked credentials. The repository owner must inspect historical Actions runs, revoke/rotate tokens available to those runs (especially the npm publishing token), and review published artifacts and account activity. Preserve evidence before deleting historical logs. No account tokens were rotated and no remote workflows or releases were changed by this patch.
+
+## Current boundaries
+
+Public HTTP MCP is knowledge-only. Router writes are local, preview-first, and require interactive approval plus a verified 30-second watchdog. Raw writes require an operator-supplied rollback. Unknown audit data is never reported as PASS. WireGuard provisioning artifacts intentionally contain client secrets and must be handled separately from ordinary sanitized diagnostics.
+
+## Offline tools and exported files
+
+`mtik tui --offline` does not resolve a router target or open a router connection. Static linting only covers supported patterns; a clean lint report is not a security certification. Traffic Monitor displays no illustrative rates; live TUI monitoring remains deferred.
+
+TUI exports require a new directory and refuse existing paths, including symlinks. Directories use mode `0700` and files `0600`. WireGuard `client.conf` and `router-peer.rsc` intentionally retain provisioning secrets; screenshots, logs, and review reports must not contain those secrets. Checksums detect accidental content changes, not authenticity.
+
+The fleet store uses locally derived encryption material; it is not an OS keychain or a defense against an attacker controlling the same user account. Protect the account, local storage, and backups. Repository tests use dummy credentials and temporary stores; physical router recovery has not been validated by this maintenance.

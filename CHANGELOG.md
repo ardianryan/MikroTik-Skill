@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [Unreleased]
+
+### Added
+- Offline TUI entry (`mtik tui --offline` and gateway Ctrl+O) for local tools without router requests.
+- Editable PCC, WireGuard, and Hotspot forms using shared validation.
+- Local `.rsc` linting with finding navigation and sanitized JSON report export.
+- Private bundle export into a new directory, with SHA256 checksums and `0700`/`0600` permissions. Existing paths are refused.
+
+### Security
+- Removed two secret-exfiltration workflows; restricted remaining Actions permissions, pinned action commits, and made publish failures visible. Owner investigation and credential rotation remain required.
+- Public HTTP/SSE MCP no longer exposes router or inventory access, including when credentials exist in its environment.
+- Local writes default to dry-run and bind interactive approval to the router, reviewed state, operation, and rollback. Raw writes require an explicit recovery script; watchdog arm/readback/disarm failures are reported.
+- Enabled TLS verification and private CA support; removed HTTPS downgrade and automatic mutation transport retries.
+- Added shared input limits, HTTP body/error handling, Host/Origin checks, and SSE session bounds.
+- Expanded recursive secret sanitization and private file permissions; added audit UNKNOWN/INCOMPLETE states and stricter firewall assessment.
+- Removed default Hotspot accounts, escaped generated input, and rendered browser linter findings as text.
+- Updated MCP SDK to 1.32.2, Zod to 4.6.7, and compatible advisory-related transitive dependencies.
+
+### Verification
+- Local isolated verification passed typecheck, build, 127 tests, and seven pseudo-terminal scenarios with dummy credentials. See CONTRIBUTING.md for commands and limits.
+- No physical router was contacted. Live TUI traffic integration and owner-side incident follow-up remain unvalidated.
+
+### Fixed
+- CLI PCC parses strict integer weights and optional `@gateway` addresses; sample defaults are explicitly identified when gateways are omitted.
+- CLI audit preserves UNKNOWN findings and INCOMPLETE overall status.
+- Corrected CLI examples, transport boundaries, and rollback claims throughout the operational documentation.
+- Removed illustrative TUI interface rates and hardware topology claims. Live TUI traffic monitoring remains deferred.
+- Corrected the TUI MCP installer hint to `mtik install-mcp`.
+- All-in-one Hotspot generation from TUI requires an operator-supplied HTTPS authentication URL.
+
 ## [1.3.0] - 2026-10-28
 
 ### Added

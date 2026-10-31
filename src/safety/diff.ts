@@ -1,3 +1,4 @@
+import { ConfigSanitizer } from './sanitizer.js';
 import chalk from 'chalk';
 
 export interface DiffEntry {
@@ -46,7 +47,7 @@ export function formatRuleDiff(diff: DiffEntry): string {
       break;
   }
 
-  return lines.join('\n');
+  return ConfigSanitizer.sanitizeText(lines.join('\n'));
 }
 
 export function formatBatchDiff(diffs: DiffEntry[]): string {

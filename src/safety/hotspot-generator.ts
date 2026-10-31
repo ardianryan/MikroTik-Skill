@@ -1,3 +1,4 @@
+import { HotspotSchema, escapeHtml } from './validation.js';
 export type HotspotAuthModel = 'voucher' | 'member' | 'dual' | 'all-in-one';
 
 export interface HotspotGeneratorOptions {
@@ -20,6 +21,7 @@ export interface HotspotGeneratedBundle {
 
 export class HotspotPortalGenerator {
   static generate(options: HotspotGeneratorOptions = {}): HotspotGeneratedBundle {
+    options = HotspotSchema.parse(options);
     const venue = options.venueName || 'High-Speed Wi-Fi';
     const model = options.model || 'all-in-one';
     const enableTrial = options.enableTrial !== false;
@@ -30,14 +32,14 @@ export class HotspotPortalGenerator {
     const googleAuthUrl = options.googleAuthUrl || 'https://auth.yourvenue.com/login/google';
 
     const loginHtml = this.buildLoginHtml({
-      venue,
+      venue: escapeHtml(venue),
       model,
       enableTrial,
-      googleAuthUrl,
+      googleAuthUrl: escapeHtml(googleAuthUrl),
     });
 
     const statusHtml = this.buildStatusHtml({
-      venue,
+      venue: escapeHtml(venue),
       dnsName,
     });
 
@@ -390,8 +392,8 @@ export class HotspotPortalGenerator {
       ``,
       `# 4. Sample Voucher Provisioning`,
       `/ip hotspot user`,
-      `add name="VC-TEST01" password="VC-TEST01" profile="uprof-voucher" comment="Sample Voucher"`,
-      `add name="admin-staff" password="StaffSecurePassword123" profile="uprof-member" comment="Staff Account"`
+      `# Create unique voucher credentials separately.`,
+      `# No default user accounts are provisioned.`
     );
 
     return lines.join('\n');

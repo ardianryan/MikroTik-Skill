@@ -3,17 +3,19 @@ import path from 'node:path';
 import os from 'node:os';
 import { config as loadDotenv } from 'dotenv';
 import { z } from 'zod';
+import { getActiveFleetDevice, getFleetDevice, fleetDeviceToRouterConfig } from './fleet.js';
 
 loadDotenv();
 
 export const RouterConfigSchema = z.object({
-  host: z.string().min(1, 'Host cannot be empty'),
+  host: z.string().min(1).max(253).regex(/^[a-zA-Z0-9.:[\]_-]+$/),
+  caFile: z.string().min(1).optional(),
   user: z.string().min(1, 'User cannot be empty'),
   password: z.string(),
-  restPort: z.number().int().positive().default(443),
+  restPort: z.number().int().min(1).max(65535).default(443),
   useSsl: z.boolean().default(true),
-  apiPort: z.number().int().positive().default(8728),
-  apiSslPort: z.number().int().positive().default(8729),
+  apiPort: z.number().int().min(1).max(65535).default(8728),
+  apiSslPort: z.number().int().min(1).max(65535).default(8729),
   preferBinary: z.boolean().default(false),
   watchdogTimeout: z.number().int().min(10).max(300).default(30),
   wanPrimaryTable: z.string().default('to_ISP1'),
@@ -39,6 +41,7 @@ export function loadRouterConfig(overrides?: Partial<RouterConfig>): RouterConfi
 
   const rawConfig = {
     host: envHost,
+    caFile: process.env.ROUTEROS_CA_FILE,
     user: envUser,
     password: envPass,
     restPort: envRestPort,
@@ -91,6 +94,7 @@ export function saveProfilesStore(store: ProfilesStore): void {
     encoding: 'utf-8',
     mode: 0o600,
   });
+  fs.chmodSync(PROFILES_FILE, 0o600);
 }
 
 export function saveProfile(name: string, config: RouterConfig, setActive: boolean = false): void {
@@ -105,7 +109,7 @@ export function saveProfile(name: string, config: RouterConfig, setActive: boole
 export function getProfile(name?: string): RouterConfig | null {
   const store = loadProfilesStore();
   const targetName = name || store.activeProfile;
-  if (targetName && store.profiles[targetName]) {
+  if (targetName && Object.hasOwn(store.profiles, targetName)) {
     return store.profiles[targetName] || null;
   }
   return null;
@@ -113,7 +117,7 @@ export function getProfile(name?: string): RouterConfig | null {
 
 export function setActiveProfile(name: string): boolean {
   const store = loadProfilesStore();
-  if (store.profiles[name]) {
+  if (Object.hasOwn(store.profiles, name)) {
     store.activeProfile = name;
     saveProfilesStore(store);
     return true;
@@ -137,7 +141,7 @@ export interface InventoryDevice {
   user: string;
   port: number;
   transport: 'rest' | 'api';
-  source: 'inventory' | 'profile' | 'env';
+  source: 'inventory' | 'profile' | 'fleet' | 'env';
 }
 
 function resolveEnvVar(val: string): string {
@@ -238,12 +242,13 @@ export function loadInventory(): Record<string, RouterConfig> {
 export function getDeviceConfig(deviceName?: string): RouterConfig {
   if (!deviceName) {
     const profile = getProfile();
-    return profile || loadRouterConfig();
+    const active = getActiveFleetDevice();
+    return active ? fleetDeviceToRouterConfig(active) : profile || loadRouterConfig();
   }
 
   // 1. Check inventory
   const inventory = loadInventory();
-  if (inventory[deviceName]) {
+  if (Object.hasOwn(inventory, deviceName)) {
     return inventory[deviceName]!;
   }
 
@@ -253,8 +258,9 @@ export function getDeviceConfig(deviceName?: string): RouterConfig {
     return profile;
   }
 
-  // Fallback to active default
-  return loadRouterConfig();
+  const fleet = getFleetDevice(deviceName);
+  if (fleet) return fleetDeviceToRouterConfig(fleet);
+  throw new Error('Target device was not found');
 }
 
 export function listAllDevices(): InventoryDevice[] {
@@ -291,6 +297,9 @@ export function listAllDevices(): InventoryDevice[] {
       seen.add(p.name);
     }
   }
+
+  const activeFleet = getActiveFleetDevice();
+  if (activeFleet && !seen.has(activeFleet.name)) devices.push({ name: activeFleet.name, host: activeFleet.host, user: activeFleet.user, port: activeFleet.port, transport: activeFleet.preferBinary ? 'api' : 'rest', source: 'fleet' });
 
   // Current default env if empty
   if (devices.length === 0) {

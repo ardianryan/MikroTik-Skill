@@ -244,7 +244,7 @@ add service=wireless,login,hotspot address=127.0.0.1 secret="StrongRadiusSecret1
 
   static get(track: string): TemplateDefinition | undefined {
     const normalized = track.toLowerCase() as CertificationTrack;
-    return this.templates[normalized];
+    return Object.hasOwn(this.templates, normalized) ? this.templates[normalized] : undefined;
   }
 
   static list(): TemplateDefinition[] {

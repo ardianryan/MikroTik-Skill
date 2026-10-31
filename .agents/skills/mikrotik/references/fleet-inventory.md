@@ -41,6 +41,7 @@ devices:
     user: ${BRANCH_USER:-branchops}
     password: ${BRANCH_PASS}
     apiPort: 8728
+    useSsl: true
     preferBinary: true
     tags: [branch, wireguard, dual-wan]
 ```
@@ -48,7 +49,8 @@ devices:
 ### 1.2. Environment Variable Interpolation Rules
 - **Syntax:** `${VARIABLE_NAME}` or `${VARIABLE_NAME:-defaultValue}`.
 - **Credential Storage:** Real passwords and tokens **must never** be committed to version control. Passwords must be sourced from `.env`, CI/CD secrets (e.g. GitHub Actions Secrets), or vault runners.
-- **Fail-Safe Fallback:** If an inventory entry cannot resolve a target device name, the automation engine automatically falls back to active CLI profiles or the default local environment (`ROUTEROS_HOST`).
+- **Explicit targets:** Resolve the requested name in inventory, profiles, then fleet. An unknown name is an error; never silently connect to another router.
+- **Default target:** Without an explicit name, use the stored active fleet device, then active profile, then environment. Public HTTP/SSE cannot enumerate or connect to any of these targets.
 
 ---
 
@@ -56,7 +58,7 @@ devices:
 
 | Transport Mode | Port | Protocol | Best Use Case | Considerations |
 |---|:---:|---|---|---|
-| **REST API (`preferBinary: false`)** | 443 (HTTPS) | HTTP/1.1 JSON | Modern RouterOS v7.1+, cloud automation, webhooks | Requires `www-ssl` service enabled with trusted certificate or relaxed TLS validation for self-signed certificates. |
+| **REST API (`preferBinary: false`)** | 443 (HTTPS) | HTTP/1.1 JSON | Modern RouterOS v7.1+, cloud automation, webhooks | Requires `www-ssl` service enabled with trusted certificate. Use `ROUTEROS_CA_FILE` for private trust; validation is mandatory. |
 | **Native API (`preferBinary: true`)** | 8728 (Plain) / 8729 (SSL) | Binary ROS Socket | High-throughput bulk telemetry, low-latency loops | Bypasses HTTP parsing overhead. Ideal for resource-constrained devices (e.g. hEX, mAP, cAP lite). |
 
 ---
@@ -70,24 +72,21 @@ mtik devices
 # or via MCP tool: mikrotik_list_devices
 ```
 
-### 3.2. Synchronized Configuration Snapshots
-Export sanitized configuration across the entire router fleet for disaster recovery:
+### 3.2. Configuration Snapshots and Audits
+
+Select and verify one stored fleet target before commands that use the default target. Audit and backup CLI commands do not provide a `--device` option; do not automate them by parsing a human-readable devices table.
+
 ```bash
-# Bash batch backup script
-for device in $(mtik devices | awk '{print $2}'); do
-  echo "Backing up $device..."
-  mtik backup --sanitize -o "./backups/${device}"
-done
+mtik fleet list
+mtik fleet switch branch-west-gw
+mtik test
+mtik backup --sanitize -o ./backups/branch-west-gw
+mtik audit --format markdown --output ./audit-branch-west-gw.md
 ```
 
-### 3.3. Batch Firmware & Security Audit
-Run the 7-Pillar Security Audit sequentially against every fleet member:
-```bash
-for device in $(mtik devices | awk '{print $2}'); do
-  echo "Auditing $device..."
-  mtik audit -f markdown -o "./reports/audit-${device}.md"
-done
-```
+The name passed to `fleet switch` must already exist in the fleet store; inventory/profile entries are separate sources. For explicit per-device diagnostics, use supported flags such as `mtik logs --device branch-west-gw` or local MCP `targetDevice` arguments. Never assume every CLI command accepts `--device`.
+
+Backups and audits contain operational context even after secret masking. Review exports before sharing. Audits report UNKNOWN/INCOMPLETE for unverified data and do not establish absence of firmware CVEs.
 
 ---
 
@@ -106,4 +105,4 @@ done
    /user add name=netops-bot group=automation password="${BOT_PASS}"
    ```
 3. **Automated Rollback Safeguard:**
-   - Any remote fleet mutation applied over WAN tunnels or routing links must be guarded by `SafeModeWatchdog` with a 30-second ping heartbeat to prevent unrecoverable link severance.
+   - Toolkit router writes are local and require selected audit findings or a manual reason, reviewed preview/recovery, and interactive approval. Arm/read back the 30-second watchdog before applying. Recheck target/configuration, verify health afterward, and report recovery as uncertain until verified; do not promise prevention of every lockout.

@@ -1,6 +1,15 @@
-import { test, describe } from 'node:test';
+import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseYamlInventory, getDeviceConfig, listAllDevices } from '../src/config/profile.js';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+const previousHome = process.env.HOME;
+const previousCwd = process.cwd();
+const storage = fs.mkdtempSync(path.join(os.tmpdir(), 'mtik-inventory-fixture-'));
+process.env.HOME = storage;
+process.chdir(storage);
+const { parseYamlInventory, getDeviceConfig, listAllDevices } = await import('../src/config/profile.js');
+after(() => { process.env.HOME = previousHome; process.chdir(previousCwd); fs.rmSync(storage, { recursive: true, force: true }); });
 
 describe('Inventory & Multi-Router Management', () => {
   test('parses multi-device YAML inventory correctly', () => {
@@ -57,13 +66,14 @@ devices:
     assert.ok(first.name);
     assert.ok(first.host);
     assert.ok(first.transport);
-    assert.ok(['inventory', 'profile', 'env'].includes(first.source));
+    assert.ok(['inventory', 'profile', 'fleet', 'env'].includes(first.source));
   });
 
-  test('getDeviceConfig falls back to active default when target not found', () => {
-    const fallback = getDeviceConfig('non-existent-device-xyz');
-    assert.ok(fallback);
-    assert.ok(fallback.host);
-    assert.ok(fallback.user);
+  test('prototype properties cannot resolve as router targets', () => {
+    for (const name of ['constructor', 'toString', '__proto__']) assert.throws(() => getDeviceConfig(name), /not found/);
+  });
+
+  test('getDeviceConfig rejects an unknown explicit target', () => {
+    assert.throws(() => getDeviceConfig('non-existent-device-xyz'), /not found/);
   });
 });

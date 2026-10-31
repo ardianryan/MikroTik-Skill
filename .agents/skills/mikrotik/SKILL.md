@@ -32,6 +32,17 @@ Production-grade architecture standards, deterministic networking runbooks, and 
 
 ---
 
+## Runtime safety contract
+
+- Offline TUI (`mtik tui --offline`, or Ctrl+O from the gateway) provides editable PCC/WireGuard/Hotspot generators, local `.rsc` linting, and private new-directory exports without router requests. Live TUI traffic monitoring is deferred; never describe sample data as live.
+- Public HTTP MCP exposes knowledge tools only. Never configure it as a router-management gateway; use the local stdio server for live operations.
+- CLI writes default to preview. `--apply` requires an interactive confirmation plus selected finding IDs or a manual reason. Raw exec/REST writes require an explicit rollback script.
+- Local MCP apply requires form elicitation. A client without elicitation must use dry-run and hand execution to an interactive CLI; `confirmed: true` is not supported.
+- Approval binds the router, parameters, rollback, and reviewed configuration. Re-read state before arming a verified 30-second scheduler. Never replay uncertain writes or claim recovery without verification.
+- Use `ROUTEROS_CA_FILE` for private TLS trust. Do not disable certificate checks or downgrade to HTTP after TLS failure.
+- `UNKNOWN` means data was not verified. Required read failures yield `INCOMPLETE`, unless a critical finding already yields `VULNERABLE`.
+- WireGuard client configuration and QR provisioning are intentional secret artifacts. Store files with mode `0600` and exclude them from diagnostic transcripts. Generators do not create default hotspot accounts.
+
 ## 1. Core Architectural Directives
 
 All AI agents interacting with or generating configurations for MikroTik devices must strictly comply with these six rules:
@@ -166,7 +177,7 @@ User reports slow connection or packet drops
 │     ├─ CPU > 85% → Check /tool/profile for process hogs (networking, firewall, container)
 │     └─ Memory depleted → Check container RAM allocation or large DNS cache
 ├─ Check link saturation & interface throughput
-│  └─ mtik monitor -i WAN1,WAN2 (inspect live RX/TX rates)
+│  └─ mtik monitor -i WAN1 (inspect live RX/TX rates)
 │     ├─ Egress saturated → Deploy CAKE bufferbloat limiter (references/qos-cake.md)
 │     └─ One WAN idle in dual-WAN → Inspect Mangle PCC counters and check-gateway status
 └─ Check DNS resolution latency & open resolver risk
@@ -359,7 +370,7 @@ When troubleshooting poor wireless coverage, roaming drops, or low throughput:
 | **QoS Queuing** | Simple Queues (FIFO / PCQ) | CAKE (`kind=cake`) & FQ-CoDel | Deploy CAKE for anti-bufferbloat |
 | **Containers** | Not supported | Supported via native `/container` on ARM/x86 | Mount rootfs on USB/SSD storage |
 | **DNS Adblocking** | Complex static regex lists | Native `/ip dns adlist` | Use `/ip dns adlist add url=...` |
-| **API Transport** | Port 8728 / 8729 proprietary binary socket | REST API over HTTPS 443 + Binary fallback | Use REST API primarily; fall back to 8728 |
+| **API Transport** | Port 8728 / 8729 proprietary binary socket | REST API over HTTPS 443 + Binary fallback | Verify TLS on REST/API-SSL; permit read discovery, never retry uncertain writes |
 
 ---
 
@@ -385,9 +396,9 @@ When troubleshooting poor wireless coverage, roaming drops, or low throughput:
 ### Global CLI (`mtik`)
 ```bash
 # Connectivity & Diagnostics
-mtik test                                     # Test REST / Port 8728 connection and measure latency
+mtik test                                     # Test REST / native API connection and measure latency
 mtik status                                   # Inspect CPU load, memory, active interfaces, DHCP leases
-mtik monitor -i ether1,ether2                 # Live terminal throughput and packet rate monitor
+mtik monitor -i ether1                 # Live terminal throughput and packet rate monitor
 mtik profile [--save <name>|--switch <name>]  # Manage multiple router connection profiles
 
 # Fleet Inventory & Multi-Device Orchestration
@@ -419,15 +430,17 @@ mtik template <track>                         # Print certified production confi
 mtik template <track> -o <file.rsc>           # Save configuration script to RouterOS .rsc file
 
 # Universal CLI & REST Execution (Omnipotent Tooling)
-mtik exec "<ros_script>"                      # Execute arbitrary RouterOS CLI script atomically
+mtik --reason "Reviewed operation" --rollback "<recovery>" exec "<ros_script>" # Preview raw execution; --apply requires interactive approval
 mtik rest <GET|POST|PUT|PATCH|DELETE> <path>  # Perform direct REST API request to RouterOS v7
 
 # IDE MCP Setup
 mtik install-mcp -t <antigravity|cursor|claude|windsurf|all> [--with-env]
 ```
 
-### Model Context Protocol (`mtik-mcp`) Tools
-- `mikrotik_test_connection`: Verifies device connectivity, authentication, and transport mode (REST HTTPS or Binary 8728).
+### Local Model Context Protocol (`mtik-mcp`) Tools
+
+The router/inventory tools below require local stdio MCP. Public HTTP/SSE provides only knowledge/generator/sanitizer/validation tools. All local writes default to dry-run; a boolean parameter cannot substitute for interactive approval.
+- `mikrotik_test_connection`: Verifies device connectivity, authentication, and transport mode (REST HTTPS or Binary API-SSL).
 - `mikrotik_get_system_status`: Returns CPU load, memory usage, RouterOS version, uptime, and active interface link status.
 - `mikrotik_audit_security`: Performs automated 7-pillar security audit and returns findings with remediation commands.
 - `mikrotik_list_mangle`: Fetches all firewall mangle rules with index ordering and tier classifications.
@@ -438,7 +451,7 @@ mtik install-mcp -t <antigravity|cursor|claude|windsurf|all> [--with-env]
 - `mikrotik_get_adlist_status`: Queries status of `/ip dns adlist` malware/adblocker feeds.
 - `mikrotik_generate_template`: Generates standardized production configuration templates across all 10 certification tracks.
 - `mikrotik_generate_hotspot_portal`: Generates responsive mobile-first login.html, status.html, and RouterOS v7 walled-garden configuration supporting Voucher PINs, Member logins, Google OAuth relay, and Free Trial access.
-- `mikrotik_execute_command`: Executes arbitrary RouterOS CLI command or script atomically with output sanitization.
+- `mikrotik_execute_command`: Previews arbitrary RouterOS CLI scripts; apply requires interactive approval and an operator-supplied rollback.
 - `mikrotik_rest_query`: Sends direct HTTP REST API calls (GET, POST, PUT, PATCH, DELETE) to any `/rest/<menu>` endpoint.
 - `mikrotik_list_devices`: Enumerates all managed routers from `inventory.yml`, stored profiles, or active environment.
 - `mikrotik_get_logs`: Retrieves live system and firewall logs with optional topic filtering and limit.

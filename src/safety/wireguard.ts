@@ -1,3 +1,5 @@
+import { isIP } from 'node:net';
+import { WireGuardSchema, quoteRouterOs } from './validation.js';
 import crypto from 'node:crypto';
 import QRCode from 'qrcode';
 
@@ -41,6 +43,7 @@ export class WireGuardProvisioner {
   }
 
   static async provisionClient(options: WireGuardClientOptions): Promise<WireGuardProvisionResult> {
+    options = WireGuardSchema.parse(options);
     const { privateKey, publicKey } = this.generateKeypair();
     const psk = options.presharedKey || this.generatePresharedKey();
     const wgInterface = options.interfaceName || 'wg0';
@@ -49,13 +52,14 @@ export class WireGuardProvisioner {
     const keepalive = options.persistentKeepalive ?? 25;
 
     // Ensure client IP has proper mask
-    const clientAddress = options.clientIp.includes('/') ? options.clientIp : `${options.clientIp}/32`;
-    const routerAllowedAddress = clientAddress.endsWith('/32') ? clientAddress : `${clientAddress.split('/')[0]}/32`;
+    const hostMask = isIP(options.clientIp.split('/')[0]!) === 6 ? 128 : 32;
+    const clientAddress = options.clientIp.includes('/') ? options.clientIp : `${options.clientIp}/${hostMask}`;
+    const routerAllowedAddress = `${clientAddress.split('/')[0]}/${hostMask}`;
 
     // 1. RouterOS v7 CLI peer command
     const routerPeerCommand =
       `/interface wireguard peers add interface=${wgInterface} public-key="${publicKey}" ` +
-      `preshared-key="${psk}" allowed-address=${routerAllowedAddress} comment="${options.clientName}"`;
+      `preshared-key="${psk}" allowed-address=${routerAllowedAddress} comment=${quoteRouterOs(options.clientName)}`;
 
     // 2. Client .conf format (standard WireGuard syntax)
     const clientConfigLines = [

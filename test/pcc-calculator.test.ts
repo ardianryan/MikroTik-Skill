@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { PccCalculator } from '../src/safety/pcc-calculator.js';
+import { PccCalculator, parsePccWanSpecs } from '../src/safety/pcc-calculator.js';
 
 describe('PccCalculator', () => {
   test('calculates standard Dual-WAN 1:1 ratio correctly', () => {
@@ -54,4 +54,14 @@ describe('PccCalculator', () => {
     assert.ok(pccStreamIndex > -1);
     assert.ok(bypassDstnatIndex < pccStreamIndex, 'Bypass DSTNAT must appear before PCC stream classification');
   });
+});
+
+test('CLI WAN specs preserve explicit gateways and reject malformed weights and injection', () => {
+  const wans = parsePccWanSpecs('ISP1=2@192.0.2.1,ISP2=1@198.51.100.1');
+  const result = PccCalculator.calculate({ wans });
+  assert.equal(result.totalStreams, 3);
+  assert.match(result.script, /gateway=192\.0\.2\.1/);
+  assert.match(result.script, /gateway=198\.51\.100\.1/);
+  assert.equal(parsePccWanSpecs('ISP1=100,ISP2=50')[0]?.gateway, undefined);
+  for (const specs of ['ISP1=0,ISP2=1', 'ISP1=-1,ISP2=1', 'ISP1=2oops,ISP2=1', 'ISP1=1.5,ISP2=1', 'ISP1=10001,ISP2=1', 'ISP1=2@192.0.2.1;evil,ISP2=1', 'ISP1=2,ISP1=1']) assert.throws(() => parsePccWanSpecs(specs));
 });

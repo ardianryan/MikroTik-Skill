@@ -1,6 +1,13 @@
-import test from 'node:test';
+import test, { after } from 'node:test';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+const previousHome = process.env.HOME;
+const storage = fs.mkdtempSync(path.join(os.tmpdir(), 'mtik-fleet-fixture-'));
+process.env.HOME = storage;
+after(() => { process.env.HOME = previousHome; fs.rmSync(storage, { recursive: true, force: true }); });
 import assert from 'node:assert/strict';
-import {
+const {
   encryptPassword,
   decryptPassword,
   addFleetDevice,
@@ -10,7 +17,7 @@ import {
   getFleetDevice,
   fleetDeviceToRouterConfig,
   getFleetStore,
-} from '../src/config/fleet.js';
+} = await import('../src/config/fleet.js');
 
 test('Fleet Store & Multi-Router Management', async (t) => {
   await t.test('encrypts and decrypts passwords reliably using AES-256-GCM', () => {

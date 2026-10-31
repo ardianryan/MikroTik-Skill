@@ -88,8 +88,6 @@ function ensureStorageDir(): void {
  * Load fleet store from disk, or initialize from environment variables.
  */
 export function getFleetStore(): FleetStore {
-  ensureStorageDir();
-
   if (fs.existsSync(FLEET_FILE)) {
     try {
       const raw = fs.readFileSync(FLEET_FILE, 'utf8');
@@ -130,7 +128,6 @@ export function getFleetStore(): FleetStore {
     devices,
   };
 
-  saveFleetStore(initialStore);
   return initialStore;
 }
 
@@ -141,6 +138,7 @@ export function saveFleetStore(store: FleetStore): void {
   ensureStorageDir();
   try {
     fs.writeFileSync(FLEET_FILE, JSON.stringify(store, null, 2), { encoding: 'utf8', mode: 0o600 });
+    fs.chmodSync(FLEET_FILE, 0o600);
   } catch {
     // Ignore write errors in read-only environments
   }
@@ -229,6 +227,7 @@ export function setActiveFleetDevice(name: string): boolean {
  * Retrieve currently active router device.
  */
 export function getActiveFleetDevice(): FleetDevice | null {
+  if (!fs.existsSync(FLEET_FILE)) return null;
   const store = getFleetStore();
   return store.devices.find((d) => d.name === store.activeDevice) || store.devices[0] || null;
 }
@@ -251,6 +250,8 @@ export function fleetDeviceToRouterConfig(device: FleetDevice): RouterConfig {
     user: device.user,
     password: decryptPassword(device.passwordEncrypted),
     restPort: device.port,
+    apiPort: device.preferBinary && !device.useSsl ? device.port : 8728,
+    apiSslPort: device.preferBinary && device.useSsl ? device.port : 8729,
     useSsl: device.useSsl,
     preferBinary: device.preferBinary,
   });

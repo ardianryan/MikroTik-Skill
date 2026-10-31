@@ -94,7 +94,7 @@ export class McpInstaller {
           try {
             existingContent = JSON.parse(text) as Record<string, unknown>;
           } catch {
-            existingContent = { mcpServers: {} };
+            throw new Error('Existing IDE configuration is invalid; refusing to overwrite it');
           }
         }
       }
@@ -106,7 +106,8 @@ export class McpInstaller {
       const mcpServers = existingContent.mcpServers as Record<string, unknown>;
       mcpServers.mikrotik = this.buildServerConfig(options);
 
-      fs.writeFileSync(configPath, JSON.stringify(existingContent, null, 2), 'utf-8');
+      fs.writeFileSync(configPath, JSON.stringify(existingContent, null, 2), { encoding: 'utf-8', mode: 0o600 });
+      fs.chmodSync(configPath, 0o600);
 
       if (ide === 'antigravity') {
         this.syncAntigravitySkill();

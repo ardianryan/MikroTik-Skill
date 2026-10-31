@@ -1,11 +1,12 @@
+import { toolInputSchema } from '../safety/validation.js';
 export class OpenApiGenerator {
   static getSpecification(serverUrl: string = 'https://your-deployment.vercel.app'): Record<string, unknown> {
-    return {
+    const specification: Record<string, unknown> = {
       openapi: '3.1.0',
       info: {
         title: 'MikroTik RouterOS v7 Certified Knowledge & Intelligence API',
         description: 'Zero-credential certified knowledge engine for MikroTik RouterOS v7. Provides 10-track certification runbooks, template generation, mangle order validation, configuration sanitization, and system prompt intelligence for ChatGPT & Claude.',
-        version: '1.1.0',
+        version: '1.3.0',
       },
       servers: [
         {
@@ -364,5 +365,17 @@ export class OpenApiGenerator {
         },
       },
     };
+    const routes: Record<string, string> = {
+      validate: 'mikrotik_validate_routing_mark', sanitize: 'mikrotik_sanitize_config', pcc: 'mikrotik_calculate_pcc',
+      wireguard: 'mikrotik_provision_wireguard', 'migrate-filter': 'mikrotik_migrate_filter', lint: 'mikrotik_lint_config', hotspot: 'mikrotik_generate_hotspot_portal',
+    };
+    const paths = specification.paths as Record<string, Record<string, Record<string, unknown>>>;
+    for (const [route, tool] of Object.entries(routes)) {
+      const operation = paths[`/api/v1/knowledge/${route}`]?.post;
+      if (!operation) continue;
+      operation.requestBody = { required: true, content: { 'application/json': { schema: toolInputSchema(tool) } } };
+      operation.responses = { ...(operation.responses as Record<string, unknown>), '400': { description: 'Invalid JSON, schema, or complexity limit' }, '413': { description: 'Request body exceeds 256 KiB' }, '500': { description: 'Internal error; details are not exposed' } };
+    }
+    return specification;
   }
 }

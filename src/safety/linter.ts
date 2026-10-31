@@ -1,3 +1,5 @@
+import { ConfigSanitizer } from './sanitizer.js';
+import { ScriptSchema } from './validation.js';
 export type LintSeverity = 'CRITICAL' | 'HIGH' | 'WARN' | 'INFO';
 
 export interface LintFinding {
@@ -28,6 +30,7 @@ export class RouterOsLinter {
    * Runs completely offline with zero router credentials.
    */
   public static lint(script: string): LintResult {
+    script = ScriptSchema.parse(script);
     const findings: LintFinding[] = [];
     const lines = script.split(/\r?\n/);
 
@@ -59,7 +62,7 @@ export class RouterOsLinter {
           id: 'LINT-SEC-01',
           severity: 'CRITICAL',
           line: lineNum,
-          rawLine: raw,
+          rawLine: ConfigSanitizer.sanitizeText(raw),
           rule: 'Hardcoded Plaintext User Password',
           message: 'Hardcoded router administrative password detected in configuration script.',
           remediation: 'Remove the hardcoded password and assign credentials interactively via terminal or secure automation vault.',
@@ -73,7 +76,7 @@ export class RouterOsLinter {
           id: 'LINT-SEC-02',
           severity: 'CRITICAL',
           line: lineNum,
-          rawLine: raw,
+          rawLine: ConfigSanitizer.sanitizeText(raw),
           rule: 'Exposed WireGuard Private Key',
           message: 'Raw WireGuard private key exposed in cleartext inside configuration script.',
           remediation: 'Generate WireGuard keys dynamically on the device or pass via secure environment variables.',
@@ -87,7 +90,7 @@ export class RouterOsLinter {
           id: 'LINT-SEC-03',
           severity: 'HIGH',
           line: lineNum,
-          rawLine: raw,
+          rawLine: ConfigSanitizer.sanitizeText(raw),
           rule: 'Plaintext Pre-Shared Secret',
           message: `Plaintext credential found for parameter "${pskMatch[1]}".`,
           remediation: 'Mask or tokenize pre-shared keys prior to storing configuration in version control.',
@@ -109,7 +112,7 @@ export class RouterOsLinter {
           id: 'LINT-SYN-01',
           severity: 'WARN',
           line: lineNum,
-          rawLine: raw,
+          rawLine: ConfigSanitizer.sanitizeText(raw),
           rule: 'Legacy v6 Routing Filter Syntax',
           message: 'Legacy RouterOS v6 "/routing filter add" command detected. RouterOS v7 requires "/routing filter rule add".',
           remediation: 'Transpile to RouterOS v7 syntax: /routing filter rule add chain=... rule="if (...) { ... }".',
@@ -122,7 +125,7 @@ export class RouterOsLinter {
           id: 'LINT-SYN-03',
           severity: 'WARN',
           line: lineNum,
-          rawLine: raw,
+          rawLine: ConfigSanitizer.sanitizeText(raw),
           rule: 'Legacy v6 BGP Peer/Instance Syntax',
           message: 'Legacy RouterOS v6 "/routing bgp peer|instance" detected. RouterOS v7 requires "/routing bgp connection add".',
           remediation: 'Transpile to RouterOS v7 syntax: /routing bgp connection add name=... local.role=... remote.address=...',
@@ -135,7 +138,7 @@ export class RouterOsLinter {
           id: 'LINT-SYN-02',
           severity: 'WARN',
           line: lineNum,
-          rawLine: raw,
+          rawLine: ConfigSanitizer.sanitizeText(raw),
           rule: 'Deprecated Gateway Interface Scoping',
           message: 'Route gateway uses deprecated v6 percent-interface scoping syntax.',
           remediation: 'In RouterOS v7, specify target interface explicitly or use routing table binding.',
@@ -163,7 +166,7 @@ export class RouterOsLinter {
             id: 'LINT-FW-01',
             severity: 'HIGH',
             line: lineNum,
-            rawLine: raw,
+            rawLine: ConfigSanitizer.sanitizeText(raw),
             rule: 'Firewall Inverted FastPath / Established Drop Order',
             message: 'Firewall drop rule occurs before accepting established/related connection states. This may sever valid traffic.',
             remediation: 'Ensure "/ip firewall filter add chain=input/forward connection-state=established,related,untracked action=accept" is placed before general drop rules.',
@@ -177,7 +180,7 @@ export class RouterOsLinter {
           id: 'LINT-SEC-04',
           severity: 'WARN',
           line: lineNum,
-          rawLine: raw,
+          rawLine: ConfigSanitizer.sanitizeText(raw),
           rule: 'Insecure Plaintext Management Service Enabled',
           message: `Insecure plaintext service enabled (${trimmed.includes('telnet') ? 'Telnet' : 'FTP'}).`,
           remediation: 'Disable unencrypted services in favor of SSH and HTTPS/Winbox with TLS.',
@@ -190,7 +193,7 @@ export class RouterOsLinter {
           id: 'LINT-SEC-05',
           severity: 'WARN',
           line: lineNum,
-          rawLine: raw,
+          rawLine: ConfigSanitizer.sanitizeText(raw),
           rule: 'Cleartext REST API Subservice Enabled',
           message: 'Cleartext REST API (rest-plain=yes) is enabled. HTTP REST operations expose authentication credentials in transit.',
           remediation: 'Disable unencrypted REST API: /ip service webserver set rest-plain=no',
@@ -203,7 +206,7 @@ export class RouterOsLinter {
           id: 'LINT-L2-01',
           severity: 'INFO',
           line: lineNum,
-          rawLine: raw,
+          rawLine: ConfigSanitizer.sanitizeText(raw),
           rule: 'Bridge DHCP Snooping Without Dynamic ARP Inspection',
           message: 'Bridge enables DHCP snooping without Dynamic ARP Inspection (DAI). In RouterOS v7.25+, DAI prevents ARP poisoning.',
           remediation: 'Enable DAI on the snooped bridge: arp-inspection=yes',
@@ -217,7 +220,7 @@ export class RouterOsLinter {
             id: 'LINT-RT-01',
             severity: 'WARN',
             line: lineNum,
-            rawLine: raw,
+            rawLine: ConfigSanitizer.sanitizeText(raw),
             rule: 'Routing Mark Without Local Destination Exclusion',
             message: 'Mangle mark-routing rule does not exclude local router destinations (dst-address-type=!local), which may break router self-traffic.',
             remediation: 'Add "dst-address-type=!local" to the mark-routing mangle rule.',

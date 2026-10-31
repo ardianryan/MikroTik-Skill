@@ -23,6 +23,7 @@ export interface RouterBoard {
 
 export interface MangleRule {
   '.id'?: string;
+  'place-before'?: string;
   chain: string;
   action: string;
   comment?: string;
@@ -78,6 +79,9 @@ export interface FirewallFilterRule {
   disabled?: boolean | string;
   protocol?: string;
   'dst-port'?: string;
+  'src-address'?: string;
+  'dst-address'?: string;
+  'src-address-list'?: string;
   'in-interface'?: string;
   'in-interface-list'?: string;
   'connection-state'?: string;
@@ -177,7 +181,7 @@ export interface ConnectionTestResult {
   error?: string;
 }
 
-export type AuditSeverity = 'PASS' | 'INFO' | 'WARN' | 'CRITICAL';
+export type AuditSeverity = 'PASS' | 'INFO' | 'WARN' | 'CRITICAL' | 'UNKNOWN';
 
 export interface AuditItem {
   id?: string;
@@ -193,8 +197,9 @@ export interface AuditReport {
   timestamp: string;
   routerIdentity: string;
   firmwareVersion: string;
-  overallScore: 'SECURE' | 'NEEDS_ATTENTION' | 'VULNERABLE';
+  overallScore: 'SECURE' | 'NEEDS_ATTENTION' | 'VULNERABLE' | 'INCOMPLETE';
   items: AuditItem[];
+  completeness: { complete: boolean; failedReads: string[] };
 }
 
 export interface LogItem {

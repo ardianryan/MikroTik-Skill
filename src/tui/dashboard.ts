@@ -1,15 +1,20 @@
+import { ConfigSanitizer } from '../safety/sanitizer.js';
+import { PccSchema, HotspotSchema, WireGuardSchema } from '../safety/validation.js';
 import chalk from 'chalk';
+import { TextForm, type FormKey } from './form.js';
+import { exportLocalArtifacts, lintLocalFile, lintReport, type LocalArtifact } from '../safety/local-artifacts.js';
+import type { LintResult } from '../safety/linter.js';
+import { z } from 'zod';
 import { TerminalScreen } from './screen.js';
 import { truncate, padRight, renderGauge, formatBytes, stringWidth, center, terminalLink } from './utils.js';
 import { ConnectionManager } from '../client/connection-manager.js';
-import { sanitizeConfig, listProfiles, loadRouterConfig } from '../config/profile.js';
+import { sanitizeConfig, listProfiles, getDeviceConfig, loadRouterConfig, RouterConfigSchema, type RouterConfig } from '../config/profile.js';
 import {
   getFleetStore,
   addFleetDevice,
   removeFleetDevice,
   setActiveFleetDevice,
   getActiveFleetDevice,
-  getFleetDevice,
   fleetDeviceToRouterConfig,
   type FleetStore,
 } from '../config/fleet.js';
@@ -21,6 +26,8 @@ import { HotspotPortalGenerator, type HotspotAuthModel } from '../safety/hotspot
 
 export interface TuiDashboardOptions {
   device?: string;
+  offline?: boolean;
+  screen?: TerminalScreen;
 }
 
 export type TuiTab =
@@ -67,9 +74,23 @@ interface AddRouterForm {
  */
 export class TuiDashboard {
   private screen: TerminalScreen;
+  private offline: boolean;
+  private form: TextForm | null = null;
+  private submitForm: ((values: Record<string, string>) => void | Promise<void>) | null = null;
+  private artifacts: LocalArtifact[] = [];
+  private exportMessage: string | null = null;
+  private lintResult: LintResult | null = null;
+  private lintIndex = 0;
   private activeTab: TuiTab = 'telemetry';
   private selectedNavIndex = 0;
-  private isRunning = true;
+  private isRunning = false;
+  private finish: (() => void) | null = null;
+  private revision = 0;
+  private uiError: string | null = null;
+  private isGenerating = false;
+  private telemetryPending: number | null = null;
+  private targetName: string;
+  private connections = new Set<ConnectionManager>();
   private focus: 'nav' | 'content' | 'wizard' = 'nav';
 
   // Top-Level View State: 'gateway' (Login / Router Selector) vs 'dashboard' (Full Sidebar TUI)
@@ -95,7 +116,7 @@ export class TuiDashboard {
   };
 
   // Live Router Telemetry
-  private routerConfig;
+  private routerConfig: RouterConfig;
   private connectionStatus: 'connected' | 'connecting' | 'offline' = 'connecting';
   private routerOsVersion = 'RouterOS v7';
   private boardModel = 'MikroTik Hardware';
@@ -105,7 +126,6 @@ export class TuiDashboard {
   private totalMemory = 0;
 
   // Wizard States
-  private wizardStep = 0;
   private wizardData: Record<string, string> = {};
   private wizardResult: string | null = null;
   private wireguardResult: WireGuardProvisionResult | null = null;
@@ -113,151 +133,139 @@ export class TuiDashboard {
   private isAuditing = false;
 
   constructor(options: TuiDashboardOptions = {}) {
-    this.screen = new TerminalScreen();
-    this.fleetStore = getFleetStore();
+    this.screen = options.screen ?? new TerminalScreen();
+    this.offline = options.offline === true;
+    if (this.offline && options.device) throw new Error('Offline mode cannot select a router target');
+    this.fleetStore = this.offline ? { devices: [], activeDevice: '' } : getFleetStore();
 
-    const fallbackConfig = loadRouterConfig();
-    if (options.device) {
-      // If a specific device is passed (e.g. `mtik my-router`), bypass Gateway and open Full Dashboard directly!
-      this.currentView = 'dashboard';
-      const dev = getFleetDevice(options.device);
-      if (dev) {
-        setActiveFleetDevice(dev.name);
-        this.fleetStore = getFleetStore();
-        this.routerConfig = fleetDeviceToRouterConfig(dev);
-      } else {
-        const active = getActiveFleetDevice();
-        this.routerConfig = active
-          ? fleetDeviceToRouterConfig(active)
-          : this.fleetStore.devices[0]
-          ? fleetDeviceToRouterConfig(this.fleetStore.devices[0])
-          : fallbackConfig;
-      }
-    } else {
-      // If no device argument is given, ALWAYS start in Gateway / Login view!
-      this.currentView = 'gateway';
-      this.gatewayMode = this.fleetStore.devices.length === 0 ? 'add' : 'select';
-      const active = getActiveFleetDevice();
-      this.routerConfig = active
-        ? fleetDeviceToRouterConfig(active)
-        : this.fleetStore.devices[0]
-        ? fleetDeviceToRouterConfig(this.fleetStore.devices[0])
-        : fallbackConfig;
-    }
+    this.routerConfig = this.offline ? RouterConfigSchema.parse({ host: 'localhost', user: 'offline', password: '' }) : getDeviceConfig(options.device);
+    this.targetName = this.offline ? 'Offline tools' : options.device || this.routerConfig.host;
+    this.currentView = options.device || this.offline ? 'dashboard' : 'gateway';
+    if (this.offline) this.connectionStatus = 'offline';
+    this.gatewayMode = this.fleetStore.devices.length === 0 ? 'add' : 'select';
+
   }
 
   /**
    * Start TUI and initiate asynchronous connection polling.
    */
   public async start(): Promise<void> {
-    this.screen.enter();
-    this.setupKeyBindings();
-    this.screen.onResize(() => this.render());
+    if (this.isRunning) throw new Error('TUI is already running');
+    this.isRunning = true;
+    const finished = new Promise<void>((resolve) => { this.finish = resolve; });
+    try {
+      this.screen.enter();
+      this.screen.onInterrupt(() => this.stop());
+      this.setupKeyBindings();
+      this.screen.onResize(() => this.render());
+      this.render();
+      if (this.currentView === 'dashboard' && !this.offline) this.runAction(() => this.fetchSystemTelemetry());
+      await finished;
+    } finally { this.stop(); }
+  }
 
-    // Initial render
-    this.render();
+  public stop(): void {
+    this.isRunning = false;
+    this.revision++;
+    this.screen.leave();
+    this.finish?.();
+    this.finish = null;
+    for (const conn of this.connections) void conn.close().catch(() => {});
+    this.connections.clear();
+  }
 
-    // Only fetch live telemetry if we started in the dashboard view
-    if (this.currentView === 'dashboard' && this.fleetStore.devices.length > 0) {
-      this.fetchSystemTelemetry();
-    }
-
-    // Event loop wait
-    return new Promise((resolve) => {
-      const checkInterval = setInterval(() => {
-        if (!this.isRunning) {
-          clearInterval(checkInterval);
-          this.screen.leave();
-          resolve();
-        }
-      }, 100);
+  private runAction(action: () => void | Promise<void>): void {
+    const revision = this.revision;
+    void Promise.resolve().then(action).catch((error: unknown) => {
+      if (!this.isRunning || revision !== this.revision) return;
+      this.uiError = ConfigSanitizer.sanitizeText(error instanceof z.ZodError ? error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ') : error instanceof Error ? error.message : String(error));
+      this.gatewayError = this.uiError;
+      this.isConnecting = false;
+      this.isGenerating = false;
+      this.render();
     });
   }
 
+  private async closeConnection(conn: ConnectionManager): Promise<void> {
+    this.connections.delete(conn);
+    await conn.close().catch(() => {});
+  }
+
   private async fetchSystemTelemetry(): Promise<void> {
+    if (this.offline || this.telemetryPending === this.revision || !this.isRunning) return;
+    const revision = this.revision;
+    this.telemetryPending = revision;
+    const config = this.routerConfig;
     this.connectionStatus = 'connecting';
     this.render();
-
-    const conn = new ConnectionManager(this.routerConfig);
+    const conn = new ConnectionManager(config);
+    this.connections.add(conn);
     try {
       const test = await conn.testConnection();
+      if (!this.isRunning || revision !== this.revision) return;
+      this.connectionStatus = test.successful ? 'connected' : 'offline';
       if (test.successful) {
-        this.connectionStatus = 'connected';
         this.routerOsVersion = test.routerOsVersion || 'v7.x';
-        this.boardModel = test.boardModel || 'MikroTik E60iUGS';
+        this.boardModel = test.boardModel || 'MikroTik';
         this.uptime = test.uptime || '-';
-
-        try {
-          const res = await conn.getResource();
-          if (res) {
-            this.cpuLoad = Number(res['cpu-load']) || 0;
-            this.freeMemory = Number(res['free-memory']) || 0;
-            this.totalMemory = Number(res['total-memory']) || 512 * 1024 * 1024;
-          }
-        } catch {
-          // Fallback if resource query times out
-        }
-      } else {
+        const resource = await conn.getResource();
+        if (!this.isRunning || revision !== this.revision) return;
+        this.cpuLoad = Number(resource['cpu-load']) || 0;
+        this.freeMemory = Number(resource['free-memory']) || 0;
+        this.totalMemory = Number(resource['total-memory']) || 0;
+      } else this.uiError = ConfigSanitizer.sanitizeText(test.error || 'Router is offline');
+    } catch (error) {
+      if (this.isRunning && revision === this.revision) {
         this.connectionStatus = 'offline';
+        this.uiError = ConfigSanitizer.sanitizeText(error instanceof z.ZodError ? error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ') : error instanceof Error ? error.message : String(error));
       }
-    } catch {
-      this.connectionStatus = 'offline';
     } finally {
-      await conn.close();
-      this.render();
+      await this.closeConnection(conn);
+      if (this.telemetryPending === revision) this.telemetryPending = null;
+      if (revision === this.revision) this.render();
     }
   }
 
   private async attemptConnectDevice(dev: { name: string; host: string; port: number; user: string; model?: string; preferBinary?: boolean }): Promise<void> {
+    if (this.offline) throw new Error('Restart TUI without --offline to connect to a router');
+    if (this.isConnecting) return;
     this.isConnecting = true;
-    this.connectingTargetName = `${dev.name} (${dev.host}:${dev.port})`;
     this.gatewayError = null;
+    this.connectingTargetName = `${dev.name} (${dev.host}:${dev.port})`;
+    const revision = ++this.revision;
     this.render();
-
-    const config = fleetDeviceToRouterConfig(dev as any);
-    const conn = new ConnectionManager(config);
-
+    let conn: ConnectionManager | undefined;
     try {
-      const test = await conn.testConnection();
-      if (test.successful) {
-        setActiveFleetDevice(dev.name);
-        this.fleetStore = getFleetStore();
-        this.routerConfig = config;
-        this.connectionStatus = 'connected';
-        this.routerOsVersion = test.routerOsVersion || 'v7.x';
-        this.boardModel = test.boardModel || dev.model || 'MikroTik Hardware';
-        this.uptime = test.uptime || '-';
-        this.isConnecting = false;
-        // Enter Full Dashboard!
-        this.currentView = 'dashboard';
-        this.activeTab = 'telemetry';
-        this.selectedNavIndex = NAV_ITEMS.findIndex((n) => n.id === 'telemetry');
-        this.focus = 'content';
-        this.fetchSystemTelemetry();
-      } else {
-        this.isConnecting = false;
-        const rawErr = test.error || 'Connection failed';
-        if (
-          rawErr.includes('401') ||
-          rawErr.toLowerCase().includes('unauthorized') ||
-          rawErr.toLowerCase().includes('password')
-        ) {
-          this.gatewayError = `❌ Authentication Failed: Invalid username or password for router ${dev.host}.`;
-        } else if (rawErr.toLowerCase().includes('timeout') || rawErr.toLowerCase().includes('timed out')) {
-          this.gatewayError = `❌ Timeout (Port ${dev.port}): Router ${dev.host} did not respond. Check IP connectivity or enable service (/ip service enable ${dev.preferBinary ? 'api' : 'www'}).`;
-        } else if (rawErr.toLowerCase().includes('refused') || rawErr.toLowerCase().includes('econnrefused')) {
-          this.gatewayError = `❌ Connection Refused: Port ${dev.port} closed on router ${dev.host}. Enable service via MikroTik terminal (/ip service enable ${dev.preferBinary ? 'api' : 'www'}).`;
-        } else {
-          this.gatewayError = `❌ Connection Failed to ${dev.host}:${dev.port}: ${rawErr}`;
-        }
-        this.render();
+      const config = getDeviceConfig(dev.name);
+      conn = new ConnectionManager(config);
+      this.connections.add(conn);
+      const result = await conn.testConnection();
+      if (!this.isRunning || revision !== this.revision) return;
+      if (!result.successful) throw new Error(result.error || 'Router connection failed');
+      setActiveFleetDevice(dev.name);
+      this.fleetStore = getFleetStore();
+      this.routerConfig = config;
+      this.targetName = dev.name;
+      this.auditFindings = [];
+      this.isAuditing = false;
+      this.currentView = 'dashboard';
+      this.resetWizardState();
+      this.activeTab = 'telemetry';
+      this.selectedNavIndex = 0;
+      this.focus = 'content';
+      this.connectionStatus = 'connected';
+      this.uiError = null;
+      this.runAction(() => this.fetchSystemTelemetry());
+    } catch (error) {
+      if (this.isRunning && revision === this.revision) {
+        this.gatewayError = ConfigSanitizer.sanitizeText(error instanceof Error ? error.message : String(error));
+        this.uiError = this.gatewayError;
+        this.connectionStatus = 'offline';
       }
-    } catch (err) {
-      this.isConnecting = false;
-      this.gatewayError = `❌ Error: ${err instanceof Error ? err.message : String(err)}`;
-      this.render();
     } finally {
-      await conn.close();
+      if (conn) await this.closeConnection(conn);
+      if (revision === this.revision) this.isConnecting = false;
+      this.render();
     }
   }
 
@@ -265,7 +273,10 @@ export class TuiDashboard {
     const name = (this.addRouterForm.name || `router-${Date.now().toString(36)}`).trim();
     const host = (this.addRouterForm.host || '192.168.88.1').trim();
     const preferBinary = Boolean(this.addRouterForm.preferBinary);
-    const port = parseInt(this.addRouterForm.port, 10) || (preferBinary ? 8728 : 443);
+    const portText = this.addRouterForm.port.trim();
+    if (!/^\d+$/.test(portText)) throw new Error('Port must be an integer between 1 and 65535');
+    const port = Number(portText);
+    loadRouterConfig({ host, user: (this.addRouterForm.user || 'admin').trim(), password: this.addRouterForm.password, restPort: port });
     const user = (this.addRouterForm.user || 'admin').trim();
     const password = this.addRouterForm.password;
     const model = (this.addRouterForm.model || 'MikroTik E60iUGS').trim();
@@ -278,22 +289,24 @@ export class TuiDashboard {
       password,
       model,
       preferBinary,
-      useSsl: !preferBinary && (port === 443 || port === 8443),
+      useSsl: preferBinary ? port === 8729 : port === 443 || port === 8443,
     });
 
     this.fleetStore = getFleetStore();
+    if (this.wizardMode === 'add-router') { this.wizardMode = null; this.focus = 'content'; }
     await this.attemptConnectDevice(newDev);
   }
 
   private handleGatewayKey(key: { name: string; sequence: string; ctrl?: boolean; shift?: boolean }): void {
-    if (this.isConnecting) return; // Prevent input while connection is testing
+    if (key.ctrl && key.name === 'q') { this.stop(); return; }
+    if (this.isConnecting) return;
 
     const keyName = key.name || '';
     const devices = this.fleetStore.devices;
 
     if (this.gatewayMode === 'select') {
       if (keyName === 'q') {
-        this.isRunning = false;
+        this.stop();
         return;
       }
 
@@ -321,7 +334,7 @@ export class TuiDashboard {
       if (keyName === 'return' || keyName === 'enter' || keyName === 'space') {
         const targetDev = devices[this.selectedFleetIndex];
         if (targetDev) {
-          void this.attemptConnectDevice(targetDev);
+          this.runAction(() => this.attemptConnectDevice(targetDev));
         }
         return;
       }
@@ -361,6 +374,7 @@ export class TuiDashboard {
     } else if (this.gatewayMode === 'add') {
       // Escape returns to select mode if devices exist
       if (keyName === 'escape') {
+        if (devices.length === 0) { this.stop(); return; }
         if (devices.length > 0) {
           this.gatewayMode = 'select';
           this.gatewayError = null;
@@ -394,7 +408,7 @@ export class TuiDashboard {
       if (currentKey === 'preferBinary') {
         if (keyName === 'space' || keyName === 'left' || keyName === 'right') {
           this.addRouterForm.preferBinary = !this.addRouterForm.preferBinary;
-          this.addRouterForm.port = this.addRouterForm.preferBinary ? '8728' : '443';
+          this.addRouterForm.port = this.addRouterForm.preferBinary ? '8729' : '443';
           this.render();
           return;
         }
@@ -407,7 +421,7 @@ export class TuiDashboard {
           this.render();
         } else {
           // Submit form
-          void this.submitAddRouterForm();
+          this.runAction(() => this.submitAddRouterForm());
         }
         return;
       }
@@ -439,8 +453,8 @@ export class TuiDashboard {
 
       // Backspace
       if (keyName === 'backspace' && currentKey !== 'preferBinary') {
-        const val = String((this.addRouterForm as any)[currentKey] || '');
-        (this.addRouterForm as any)[currentKey] = val.slice(0, -1);
+        const val = this.addRouterForm[currentKey];
+        this.addRouterForm[currentKey] = [...val].slice(0, -1).join('');
         this.render();
         return;
       }
@@ -450,20 +464,25 @@ export class TuiDashboard {
         currentKey !== 'preferBinary' &&
         key.sequence &&
         key.sequence.length === 1 &&
-        !keyName.startsWith('f') &&
-        keyName !== 'tab' &&
+                keyName !== 'tab' &&
         keyName !== 'enter' &&
         keyName !== 'return' &&
         keyName !== 'escape'
       ) {
-        (this.addRouterForm as any)[currentKey] = String((this.addRouterForm as any)[currentKey] || '') + key.sequence;
+        if (!key.ctrl && !/[\x00-\x1f\x7f-\x9f]/.test(key.sequence) && this.addRouterForm[currentKey].length < 256) this.addRouterForm[currentKey] += key.sequence;
         this.render();
       }
     }
   }
 
   private setupKeyBindings(): void {
-    this.screen.onKey((key) => {
+    this.screen.onKey((key) => this.runAction(async () => {
+      if (key.ctrl && key.name === 'q') { this.stop(); return; }
+      if (this.form) { await this.handleFormKey(key); return; }
+      if (this.currentView === 'gateway' && key.ctrl && key.name === 'o') {
+        this.offline = true; this.revision++; this.connectionStatus = 'offline'; this.targetName = 'Offline tools';
+        this.currentView = 'dashboard'; this.render(); return;
+      }
       // If currently on Gateway screen, route all keystrokes to Gateway handler!
       if (this.currentView === 'gateway') {
         this.handleGatewayKey(key);
@@ -472,12 +491,16 @@ export class TuiDashboard {
 
       // Quit from Dashboard
       if (key.name === 'q' && this.focus !== 'wizard') {
-        this.isRunning = false;
+        this.stop();
         return;
       }
 
       // Switch Router / Logout back to Gateway screen
       if ((key.name === 'l' || key.name === 'L') && this.focus !== 'wizard') {
+        if (this.offline) { this.uiError = 'Restart without --offline to connect to a router.'; this.render(); return; }
+        this.revision++;
+        this.auditFindings = [];
+        this.isAuditing = false;
         this.currentView = 'gateway';
         this.gatewayMode = this.fleetStore.devices.length === 0 ? 'add' : 'select';
         this.gatewayError = null;
@@ -490,6 +513,9 @@ export class TuiDashboard {
         this.handleAddRouterKey(key);
         return;
       }
+
+
+      if (this.focus === 'content' && this.activeTab === 'hotspot' && /^[1-4]$/.test(key.name)) { this.handleHotspotWizardKey(key); return; }
 
       // Tab navigation
       if (key.name === 'tab') {
@@ -513,7 +539,7 @@ export class TuiDashboard {
 
       // Refresh shortcut
       if (key.name === 'r' && this.focus !== 'wizard') {
-        this.fetchSystemTelemetry();
+        this.runAction(() => this.fetchSystemTelemetry());
         return;
       }
 
@@ -542,15 +568,17 @@ export class TuiDashboard {
       if (this.focus === 'content' || this.focus === 'wizard') {
         this.handleContentKey(key);
       }
-    });
+    }));
   }
 
   private resetWizardState(): void {
-    this.wizardStep = 0;
+    this.artifacts = []; this.exportMessage = null; this.form = null; this.submitForm = null;
+    this.lintResult = null; this.lintIndex = 0;
     this.wizardData = {};
     this.wizardResult = null;
     this.wireguardResult = null;
     this.wizardMode = null;
+    this.uiError = null;
     this.focus = 'nav';
   }
 
@@ -561,20 +589,23 @@ export class TuiDashboard {
       return;
     }
 
+    if (key.name === 'e' && this.artifacts.length) { this.openExportForm(); return; }
+    if (this.activeTab === 'linter') { this.handleLinterKey(key); return; }
     if (this.activeTab === 'fleet') {
       this.handleFleetKey(key);
     } else if (this.activeTab === 'pcc') {
       this.handlePccWizardKey(key);
     } else if (this.activeTab === 'wireguard') {
-      this.handleWireguardWizardKey(key);
+      this.runAction(() => this.handleWireguardWizardKey(key));
     } else if (this.activeTab === 'hotspot') {
       this.handleHotspotWizardKey(key);
     } else if (this.activeTab === 'audit') {
-      void this.handleAuditKey(key);
+      this.runAction(() => this.handleAuditKey(key));
     }
   }
 
   private handleFleetKey(key: { name: string }): void {
+    if (this.offline) { this.uiError = 'Restart without --offline to manage router credentials.'; this.render(); return; }
     const devices = this.fleetStore.devices;
 
     // Up / Down in Fleet table
@@ -592,13 +623,7 @@ export class TuiDashboard {
       // Switch active target router and open Telemetry Dashboard
       const targetDev = devices[this.selectedFleetIndex];
       if (targetDev) {
-        setActiveFleetDevice(targetDev.name);
-        this.fleetStore = getFleetStore();
-        this.routerConfig = fleetDeviceToRouterConfig(targetDev);
-        this.activeTab = 'telemetry';
-        this.selectedNavIndex = NAV_ITEMS.findIndex((n) => n.id === 'telemetry');
-        this.focus = 'content';
-        this.fetchSystemTelemetry();
+        this.runAction(() => this.attemptConnectDevice(targetDev));
       }
     } else if (key.name === 'a') {
       // Open Add Router Form Wizard
@@ -625,169 +650,163 @@ export class TuiDashboard {
         const active = getActiveFleetDevice();
         if (active) {
           this.routerConfig = fleetDeviceToRouterConfig(active);
-          this.fetchSystemTelemetry();
+          this.runAction(() => this.fetchSystemTelemetry());
         }
         this.render();
       }
     }
   }
 
-  private handleAddRouterKey(key: { name: string; sequence: string }): void {
-    const keyName = key.name || '';
-    if (keyName === 'escape') {
-      this.focus = 'content';
-      this.wizardMode = null;
-      this.render();
-      return;
+  private handleAddRouterKey(key: { name: string; sequence: string; ctrl?: boolean; shift?: boolean }): void {
+    if (key.name === 'escape') { this.focus = 'content'; this.wizardMode = null; this.uiError = null; this.render(); return; }
+    this.handleGatewayFormKey(key);
+  }
+
+  private handleGatewayFormKey(key: { name: string; sequence: string; ctrl?: boolean; shift?: boolean }): void {
+    const previousMode = this.gatewayMode;
+    this.gatewayMode = 'add';
+    try { this.handleGatewayKey(key); } finally { this.gatewayMode = previousMode; }
+  }
+
+  private openForm(title: string, fields: Array<{ key: string; label: string; value: string }>, submit: (values: Record<string, string>) => void | Promise<void>): void {
+    this.form = new TextForm(title, fields); this.submitForm = submit; this.focus = 'wizard'; this.uiError = null; this.render();
+  }
+
+  private async handleFormKey(key: FormKey): Promise<void> {
+    const form = this.form;
+    if (!form || this.isGenerating) return;
+    const action = form.handle(key);
+    this.uiError = null;
+    if (action === 'cancel') { this.form = null; this.submitForm = null; this.focus = 'content'; }
+    if (action === 'submit' && this.submitForm) {
+      this.isGenerating = true;
+      try {
+        await this.submitForm(form.values());
+        if (this.form === form) { this.form = null; this.submitForm = null; this.focus = 'content'; }
+      } finally { this.isGenerating = false; }
     }
+    this.render();
+  }
 
-    const fieldKeys: Array<keyof AddRouterForm> = ['name', 'host', 'port', 'user', 'password', 'model'];
-    const currentKey = fieldKeys[this.addRouterField] || 'name';
-
-    if (keyName === 'return' || keyName === 'enter') {
-      if (this.addRouterField < fieldKeys.length - 1) {
-        this.addRouterField++;
-        this.render();
-      } else {
-        // Complete form: save to fleet
-        const newDev = addFleetDevice({
-          name: this.addRouterForm.name || `router-${Date.now().toString(36)}`,
-          host: this.addRouterForm.host || '192.168.88.1',
-          port: parseInt(this.addRouterForm.port, 10) || 443,
-          user: this.addRouterForm.user || 'admin',
-          password: this.addRouterForm.password,
-          model: this.addRouterForm.model || 'MikroTik E60iUGS',
-        });
-
-        this.fleetStore = getFleetStore();
-        this.routerConfig = fleetDeviceToRouterConfig(newDev);
-        this.focus = 'content';
-        this.wizardMode = null;
-        this.fetchSystemTelemetry();
-      }
-      return;
-    }
-
-    if (keyName === 'up' && this.addRouterField > 0) {
-      this.addRouterField--;
-      this.render();
-      return;
-    }
-
-    if (keyName === 'down' && this.addRouterField < fieldKeys.length - 1) {
-      this.addRouterField++;
-      this.render();
-      return;
-    }
-
-    if (keyName === 'backspace' && typeof this.addRouterForm[currentKey] === 'string') {
-      (this.addRouterForm as any)[currentKey] = (this.addRouterForm[currentKey] as string).slice(0, -1);
-      this.render();
-      return;
-    }
-
-    // Printable character input (including dots, letters, numbers, symbols)
-    if (
-      typeof this.addRouterForm[currentKey] === 'string' &&
-      key.sequence &&
-      key.sequence.length === 1 &&
-      !keyName.startsWith('f') &&
-      keyName !== 'tab' &&
-      keyName !== 'enter' &&
-      keyName !== 'return' &&
-      keyName !== 'escape'
-    ) {
-      (this.addRouterForm as any)[currentKey] += key.sequence;
-      this.render();
-    }
+  private openExportForm(): void {
+    this.openForm('Export to a NEW directory (existing paths are never overwritten)', [
+      { key: 'path', label: 'Directory', value: '' },
+    ], (values) => {
+      if (!values.path) throw new Error('Enter a destination directory');
+      this.exportMessage = `Saved ${this.artifacts.length} files to ${exportLocalArtifacts(values.path, this.artifacts)}`;
+    });
   }
 
   private handlePccWizardKey(key: { name: string }): void {
-    if (key.name === 'w' || key.name === 'return' || key.name === 'enter') {
-      this.focus = 'wizard';
-      this.wizardMode = 'pcc';
-      if (this.wizardStep === 0) {
-        this.wizardStep = 1;
-      } else if (this.wizardStep === 1) {
-        this.wizardData.ratio = this.wizardData.ratio || 'ISP1:100,ISP2:50';
-        this.wizardStep = 2;
-      } else if (this.wizardStep === 2) {
-        const pccResult = PccCalculator.calculate({
-          wans: [
-            { name: 'ISP1', weight: 2, gateway: '192.168.1.1' },
-            { name: 'ISP2', weight: 1, gateway: '192.168.2.1' },
-          ],
-          lanInterface: 'bridge-lan',
-        });
-        this.wizardResult = pccResult.script;
-        this.wizardStep = 3;
-      }
-      this.render();
-    }
+    if (!['w', 'return', 'enter'].includes(key.name)) return;
+    this.openForm('PCC generator — WAN rows: name:weight:gateway, separated by commas', [
+      { key: 'wans', label: 'WANs', value: this.wizardData.wans || 'ISP1:2:192.168.1.1,ISP2:1:192.168.2.1' },
+      { key: 'lan', label: 'LAN interface', value: this.wizardData.lan || 'bridge-lan' },
+      { key: 'classifier', label: 'Classifier', value: this.wizardData.classifier || 'both-addresses-and-ports' },
+    ], (values) => {
+      const wans = (values.wans || '').split(',').map((row) => {
+        const match = /^([^:]+):(\d+):(.+)$/.exec(row.trim());
+        if (!match) throw new Error('WAN format: ISP1:2:192.168.1.1,ISP2:1:192.168.2.1');
+        return { name: match[1], weight: Number(match[2]), gateway: match[3] };
+      });
+      const options = PccSchema.parse({ wans, lanInterface: values.lan, classifier: values.classifier });
+      const result = PccCalculator.calculate(options);
+      this.wizardData = values;
+      this.wizardResult = result.script;
+      this.artifacts = [{ name: 'pcc.rsc', content: result.script }];
+      this.exportMessage = `${result.totalStreams} streams: ${Object.entries(result.streamsPerWan).map(([name, streams]) => `${name}=${streams.length}`).join(', ')}`;
+    });
   }
 
   private async handleWireguardWizardKey(key: { name: string }): Promise<void> {
-    if (key.name === 'g' || key.name === 'return' || key.name === 'enter') {
-      this.focus = 'wizard';
-      this.wizardMode = 'wireguard';
-      this.wireguardResult = await WireGuardProvisioner.provisionClient({
-        clientName: 'wg-client-phone',
-        clientIp: '10.10.0.2/32',
-        serverEndpoint: `${this.routerConfig.host}:13231`,
-        serverPublicKey: 'YOUR_SERVER_PUBLIC_KEY_HERE_44_CHARS===',
-        interfaceName: 'wg0',
-        dns: '10.10.0.1',
-      });
-      this.render();
-    }
+    if (!['g', 'return', 'enter'].includes(key.name)) return;
+    this.openForm('WireGuard client — local provisioning only', [
+      { key: 'serverPublicKey', label: 'Server public key', value: this.wizardData.serverPublicKey || '' },
+      { key: 'clientName', label: 'Client name', value: this.wizardData.clientName || 'wg-client-phone' },
+      { key: 'clientIp', label: 'Client IP/CIDR', value: this.wizardData.clientIp || '10.10.0.2/32' },
+      { key: 'serverEndpoint', label: 'Server host:port', value: this.wizardData.serverEndpoint || 'vpn.example.com:13231' },
+      { key: 'interfaceName', label: 'Router interface', value: this.wizardData.interfaceName || 'wg0' },
+      { key: 'dns', label: 'DNS IPs', value: this.wizardData.dns || '10.10.0.1' },
+      { key: 'allowedIps', label: 'Allowed IPs', value: this.wizardData.allowedIps || '0.0.0.0/0, ::/0' },
+    ], async (values) => {
+      if (!WireGuardSchema.shape.serverPublicKey.safeParse(values.serverPublicKey).success) throw new Error('Enter a valid 44-character base64 server public key.');
+      const options = WireGuardSchema.parse(values);
+      const revision = this.revision;
+      const result = await WireGuardProvisioner.provisionClient(options);
+      if (!this.isRunning || revision !== this.revision) return;
+      this.wizardData = values; this.wireguardResult = result;
+      this.artifacts = [{ name: 'client.conf', content: result.clientConfig }, { name: 'router-peer.rsc', content: result.routerPeerCommand }];
+      this.exportMessage = 'Provisioning files contain private/preshared keys; stored with permission 0600.';
+    });
   }
 
   private handleHotspotWizardKey(key: { name: string }): void {
-    if (key.name === 'return' || key.name === 'enter' || key.name === 'w') {
-      this.focus = 'wizard';
-      this.wizardMode = 'hotspot';
-      const authModel = (this.wizardData.authModel as HotspotAuthModel) || 'all-in-one';
-      const result = HotspotPortalGenerator.generate({
-        venueName: 'Enterprise Lounge',
-        model: authModel,
-        enableTrial: true,
-      });
-      this.wizardResult = `Captive portal bundle generated!\nAuth Model: ${authModel.toUpperCase()}\nLogin HTML: ${result.loginHtml.length} bytes\nStatus HTML: ${result.statusHtml.length} bytes`;
-      this.render();
-    } else if (key.name === '1' || key.name === '2' || key.name === '3' || key.name === '4') {
-      const models: HotspotAuthModel[] = ['voucher', 'member', 'dual', 'all-in-one'];
-      const chosen = models[parseInt(key.name, 10) - 1];
-      if (chosen) {
-        this.wizardData.authModel = chosen;
-      }
-      this.render();
+    if (['1', '2', '3', '4'].includes(key.name)) {
+      const models: HotspotAuthModel[] = ['all-in-one', 'voucher', 'member', 'dual'];
+      this.wizardData.authModel = models[Number(key.name) - 1]!;
+      this.render(); return;
     }
+    if (!['w', 'return', 'enter'].includes(key.name)) return;
+    this.openForm('Hotspot portal bundle', [
+      { key: 'venueName', label: 'Venue name', value: this.wizardData.venueName || 'Guest Wi-Fi' },
+      { key: 'model', label: 'Auth model', value: this.wizardData.authModel || 'all-in-one' },
+      { key: 'dnsName', label: 'Portal DNS name', value: this.wizardData.dnsName || 'wifi.venue.lan' },
+      { key: 'googleAuthUrl', label: 'HTTPS auth URL', value: this.wizardData.googleAuthUrl || '' },
+      { key: 'enableTrial', label: 'Trial (yes/no)', value: this.wizardData.enableTrial || 'no' },
+    ], (values) => {
+      if (!['yes', 'no'].includes(values.enableTrial || '')) throw new Error('Trial must be yes or no');
+      if (values.model === 'all-in-one' && !values.googleAuthUrl) throw new Error('All-in-one requires your HTTPS authentication URL; choose voucher/member/dual otherwise');
+      const options = HotspotSchema.parse({ ...values, googleAuthUrl: values.googleAuthUrl || undefined, enableTrial: values.enableTrial === 'yes' });
+      const result = HotspotPortalGenerator.generate(options);
+      this.wizardData = { ...values, authModel: options.model || 'all-in-one' };
+      this.wizardResult = `Auth Model: ${options.model?.toUpperCase()}\nLogin HTML: ${Buffer.byteLength(result.loginHtml)} bytes\nStatus HTML: ${Buffer.byteLength(result.statusHtml)} bytes`;
+      this.artifacts = [{ name: 'login.html', content: result.loginHtml }, { name: 'status.html', content: result.statusHtml }, { name: 'hotspot_config.rsc', content: result.routerOsScript }];
+      this.exportMessage = null;
+    });
+  }
+
+  private handleLinterKey(key: { name: string }): void {
+    if (key.name === 'down') this.lintIndex = Math.min((this.lintResult?.findings.length || 1) - 1, this.lintIndex + 1);
+    else if (key.name === 'up') this.lintIndex = Math.max(0, this.lintIndex - 1);
+    else if (['return', 'enter', 'o'].includes(key.name)) {
+      this.openForm('Offline configuration linter (maximum 128 KiB)', [{ key: 'path', label: '.rsc file', value: '' }], (values) => {
+        const result = lintLocalFile(values.path || '');
+        this.lintResult = result; this.lintIndex = 0;
+        this.artifacts = [{ name: 'lint-report.json', content: lintReport(result) }];
+        this.exportMessage = null;
+      });
+    }
+    this.render();
   }
 
   private async handleAuditKey(key: { name: string }): Promise<void> {
+    if (this.offline) { this.uiError = 'Router audit requires a connection; use Config Linter for offline files.'; this.render(); return; }
     if ((key.name === 'space' || key.name === 'return') && !this.isAuditing) {
       this.isAuditing = true;
+      const revision = this.revision;
       this.render();
 
       const conn = new ConnectionManager(this.routerConfig);
+      this.connections.add(conn);
       try {
         const auditor = new SecurityAuditor(conn);
         const report = await auditor.runFullAudit();
-        this.auditFindings = report.items;
+        if (this.isRunning && revision === this.revision) this.auditFindings = report.items;
       } catch (err) {
+        if (!this.isRunning || revision !== this.revision) return;
         this.auditFindings = [
           {
             id: 'F-ERR',
             pillar: 'Pillar 1: System Baseline',
             title: 'Audit Connection Failed',
-            status: 'CRITICAL',
-            detail: `Could not connect to router at ${this.routerConfig.host}: ${err instanceof Error ? err.message : String(err)}`,
+            status: 'UNKNOWN',
+            detail: `Could not connect to router at ${this.routerConfig.host}: ${ConfigSanitizer.sanitizeText(err instanceof Error ? err.message : String(err))}`,
             recommendation: '# Verify router IP, REST API port 443, and credentials in fleet.json or .env',
           },
         ];
       } finally {
-        await conn.close();
-        this.isAuditing = false;
+        await this.closeConnection(conn);
+        if (revision === this.revision) this.isAuditing = false;
         this.render();
       }
     }
@@ -797,8 +816,10 @@ export class TuiDashboard {
    * Render complete dashboard frame.
    */
   public render(): void {
+    if (!this.isRunning) return;
     const { rows, cols } = this.screen.getDimensions();
     this.screen.clear();
+    if (cols < 60 || rows < 24) { this.screen.write(truncate('Terminal too small: use at least 60 columns and 24 rows. Ctrl+C exits.', cols)); return; }
 
     if (this.currentView === 'gateway') {
       this.renderGateway(rows, cols);
@@ -834,7 +855,7 @@ export class TuiDashboard {
     // Header title
     const bannerTitle = ' MIKROTIK NETDEVOPS SUITE • ROUTER GATEWAY & LOGIN ';
     lines.push(chalk.bold.cyan(bannerTitle));
-    lines.push(chalk.gray('─'.repeat(boxWidth - 4)));
+    lines.push(chalk.gray('[Ctrl+O] Offline linter & generators (no router needed)'));
 
     // Mode tabs
     const isSelect = this.gatewayMode === 'select';
@@ -890,7 +911,7 @@ export class TuiDashboard {
       lines.push(chalk.gray('─'.repeat(boxWidth - 4)));
       lines.push(
         chalk.gray(
-          `${chalk.cyan('[↑/↓]')} Select  ${chalk.green('[Enter]')} Login & Launch Dashboard  ${chalk.yellow('[A]')} Add  ${chalk.red('[D]')} Delete  ${chalk.magenta('[Q]')} Quit`
+          `${chalk.cyan('[↑/↓]')} Select  ${chalk.green('[Enter]')} Login & Launch Dashboard  ${chalk.yellow('[A]')} Add  ${chalk.red('[D]')} Delete  ${chalk.magenta('[Ctrl+Q]')} Quit`
         )
       );
     } else {
@@ -947,7 +968,7 @@ export class TuiDashboard {
       lines.push(chalk.gray('─'.repeat(boxWidth - 4)));
       lines.push(
         chalk.gray(
-          `${chalk.cyan('[Tab/↑/↓]')} Move Field  ${chalk.green('[Enter]')} Save & Connect  ${chalk.yellow('[Esc]')} Cancel  ${chalk.magenta('[Q]')} Quit`
+          `${chalk.cyan('[Tab/↑/↓]')} Move Field  ${chalk.green('[Enter]')} Save & Connect  ${chalk.yellow('[Esc]')} Cancel  ${chalk.magenta('[Ctrl+Q]')} Quit`
         )
       );
     }
@@ -963,7 +984,7 @@ export class TuiDashboard {
   }
 
   private renderHeader(cols: number, host: string): void {
-    const title = ' MikroTik NetDevOps Suite v1.2.0 ';
+    const title = ' MikroTik NetDevOps Suite v1.3.0 ';
     const connBadge =
       this.connectionStatus === 'connected'
         ? chalk.bgGreen.black(' ONLINE ')
@@ -971,13 +992,9 @@ export class TuiDashboard {
         ? chalk.bgYellow.black(' CONNECTING ')
         : chalk.bgRed.white(' OFFLINE ');
 
-    const activeRouterName = this.fleetStore.activeDevice
-      ? chalk.bold.cyan(`[${this.fleetStore.activeDevice.toUpperCase()}]`)
-      : chalk.bold.yellow('[NO ROUTER CONFIGURED]');
+    const activeRouterName = chalk.bold.cyan(`[${this.targetName.toUpperCase()}]`);
     const hardwareBadge = chalk.gray(`| HW: ${chalk.cyan(this.boardModel)} | OS: ${chalk.cyan(this.routerOsVersion)}`);
-    const targetBadge = this.fleetStore.activeDevice
-      ? chalk.gray(`| Target: ${activeRouterName} ${chalk.white(host)}`)
-      : chalk.gray(`| Target: ${activeRouterName}`);
+    const targetBadge = chalk.gray(`| Target: ${activeRouterName} ${chalk.white(host)}`);
 
     this.screen.moveTo(1, 1);
     this.screen.drawBox(1, 1, 3, cols, {
@@ -1009,9 +1026,13 @@ export class TuiDashboard {
 
   private renderMainContent(startCol: number, height: number, width: number): void {
     const lines: string[] = [];
+    if (this.uiError) lines.push(chalk.red(truncate(this.uiError, width - 4)));
+    if (this.exportMessage) lines.push(chalk.yellow(truncate(this.exportMessage, width - 4)));
+    if (this.artifacts.length && !this.form) lines.push('[e] Export bundle  [Enter] Edit/generate  [Esc] Reset');
     const activeItem = NAV_ITEMS[this.selectedNavIndex] || NAV_ITEMS[0]!;
 
-    switch (this.activeTab) {
+    if (this.form) lines.push(...this.form.lines(Math.max(1, height - lines.length - 7), width - 4));
+    else switch (this.activeTab) {
       case 'telemetry':
         this.renderTelemetryContent(lines, width);
         break;
@@ -1049,6 +1070,7 @@ export class TuiDashboard {
   }
 
   private renderTelemetryContent(lines: string[], width: number): void {
+    if (this.offline) { lines.push('Offline tools — no router connection is opened.', 'Choose PCC, WireGuard, Hotspot, or Config Linter.', 'Router telemetry is unavailable in offline mode.'); return; }
     lines.push(chalk.cyan.bold('Hardware Architecture & Resource Utilization:'));
     lines.push('');
 
@@ -1067,12 +1089,7 @@ export class TuiDashboard {
     lines.push('');
     lines.push(chalk.gray('─'.repeat(Math.max(10, width - 8))));
     lines.push('');
-    lines.push(chalk.cyan.bold('Network Interfaces & Topologies (E60iUGS / hEX S):'));
-    lines.push(`  ${chalk.green('ether1')} (PoE In)    : Direct CPU Port (WAN1 / Management)`);
-    lines.push(`  ${chalk.green('ether2 - ether5')} : EN7562CT Integrated Switch (L2 HW Offload hw=yes)`);
-    lines.push(`  ${chalk.green('sfp1')}             : 1.25 Gbps SFP Transceiver Cage`);
-    lines.push(`  ${chalk.green('usb1')}             : External USB Storage (Ext4 Container & Logs Mount)`);
-    lines.push('');
+    lines.push('Interface topology is not inferred from a hardware example.');
     lines.push(chalk.gray('Press [r] to poll router live telemetry, or [Tab] to navigate features.'));
   }
 
@@ -1102,7 +1119,7 @@ export class TuiDashboard {
           ? chalk.bgRed.white.bold(' CRITICAL ')
           : f.status === 'WARN'
           ? chalk.bgYellow.black.bold(' WARN ')
-          : chalk.bgGreen.black.bold(' PASS ');
+          : f.status === 'PASS' ? chalk.bgGreen.black.bold(' PASS ') : f.status === 'UNKNOWN' ? chalk.bgYellow.black.bold(' UNKNOWN ') : chalk.bgBlue.white.bold(' INFO ');
 
       lines.push(`  ${badge} ${chalk.bold.white(f.id || 'CHECK')}: ${f.title}`);
       lines.push(`     ${chalk.gray(truncate(f.detail, 70))}`);
@@ -1113,95 +1130,39 @@ export class TuiDashboard {
   }
 
   private renderPccContent(lines: string[]): void {
-    lines.push(chalk.cyan.bold('Asymmetric Multi-WAN PCC Load Balancing Wizard:'));
-    lines.push(chalk.gray('Mathematically calculates PCC streams based on real ISP bandwidth capacity ratios.'));
-    lines.push('');
-
-    if (this.wizardStep === 0) {
-      lines.push('  Default Scenario: Dual-WAN (WAN1 100 Mbps, WAN2 50 Mbps - Ratio 2:1)');
-      lines.push('  LAN Interface   : bridge-lan');
-      lines.push('  Table Prefix    : to_');
-      lines.push('');
-      lines.push(chalk.bgCyan.black(' Press [w] or [Enter] to launch interactive PCC Generator '));
-    } else if (this.wizardStep === 1 || this.wizardStep === 2) {
-      lines.push(chalk.yellow.bold('Interactive Wizard: Step 1 of 2'));
-      lines.push('  Selected WAN Interfaces:');
-      lines.push(`    - ${chalk.green('WAN1 (ISP1)')}: 100 Mbps (Streams: 2/3)`);
-      lines.push(`    - ${chalk.green('WAN2 (ISP2)')}: 50 Mbps (Streams: 1/3)`);
-      lines.push('');
-      lines.push(chalk.bgCyan.black(' Press [Enter] to generate RouterOS v7 Mangle & FIB rules '));
-    } else if (this.wizardStep === 3 && this.wizardResult) {
-      lines.push(chalk.green.bold('✓ Certified RouterOS v7 PCC Rules Generated:'));
-      lines.push('');
-      const previewLines = this.wizardResult.split('\n').slice(0, 14);
-      previewLines.forEach((l) => lines.push(`  ${chalk.gray(l)}`));
-      lines.push('');
-      lines.push(chalk.gray('Press [Esc] to reset. Export full script via `mtik pcc --wan "ISP1:100,ISP2:50"`.'));
+    lines.push(chalk.cyan.bold('Multi-WAN PCC generator (offline)'));
+    lines.push('Enter WAN names, positive weights, gateways, and LAN interface.');
+    if (!this.wizardResult) lines.push('[Enter] Configure WANs and generate a local script');
+    else {
+      lines.push('Generated configuration — review before applying to a router.');
+      lines.push(...this.wizardResult.split('\n').slice(0, 9).map((line) => ConfigSanitizer.sanitizeText(line)));
     }
   }
 
   private renderWireguardContent(lines: string[]): void {
-    lines.push(chalk.cyan.bold('Curve25519 WireGuard Provisioning Studio:'));
-    lines.push(chalk.gray('Generates cryptographic keypairs, client configuration, and ASCII QR Code.'));
-    lines.push('');
-
-    if (!this.wireguardResult) {
-      lines.push('  Target Interface : wg0');
-      lines.push('  Client Tunnel IP : 10.10.0.2/32');
-      lines.push(`  Server Endpoint  : ${this.routerConfig.host}:13231`);
-      lines.push('');
-      lines.push(chalk.bgCyan.black(' Press [g] or [Enter] to provision client keypair & QR code '));
-    } else {
-      lines.push(chalk.green.bold('✓ WireGuard Keys Provisioned:'));
-      lines.push(`  Client Public Key  : ${chalk.bold.white(this.wireguardResult.clientPublicKey)}`);
-      lines.push(`  Client Private Key : ${chalk.gray('(Secured & Redacted)')}`);
-      lines.push('');
-      lines.push(chalk.bold('RouterOS Interface Setup Command:'));
-      lines.push(`  ${chalk.gray(this.wireguardResult.routerPeerCommand)}`);
-      lines.push('');
-      lines.push(chalk.gray('Scan client QR code with mobile app via `mtik wireguard`. Press [Esc] to reset.'));
+    lines.push(chalk.cyan.bold('WireGuard client provisioning (offline)'));
+    if (!this.wireguardResult) lines.push('[Enter] Configure client and server public key');
+    else {
+      lines.push('WireGuard Keys Provisioned');
+      lines.push(`Client public key: ${this.wireguardResult.clientPublicKey}`);
+      lines.push('Private and preshared keys: hidden; export provisioning files to use.');
+      lines.push(ConfigSanitizer.sanitizeText(this.wireguardResult.routerPeerCommand));
     }
   }
 
   private renderHotspotContent(lines: string[]): void {
-    lines.push(chalk.cyan.bold('Captive Hotspot Portal Studio (5-in-1 Architecture):'));
-    lines.push(chalk.gray('Select authentication model to generate high-conversion mobile HTML5 portals.'));
-    lines.push('');
-
-    const models = [
-      { id: 'all-in-one', label: '1. All-in-One Smart Portal (Voucher + Member + Trial + Social)' },
-      { id: 'voucher', label: '2. Single-Field Voucher PIN with QR Auto-Login' },
-      { id: 'member', label: '3. Dual Member (Username & Password with MD5 CHAP)' },
-      { id: 'dual', label: '4. Dual Voucher PIN & Member Credentials' },
-    ];
-
-    models.forEach((m) => {
-      const isSelected = this.wizardData.authModel === m.id || (!this.wizardData.authModel && m.id === 'all-in-one');
-      lines.push(`  ${isSelected ? chalk.cyan.bold('▶ ') : '  '}${chalk.white(m.label)}`);
-    });
-
-    lines.push('');
-    if (!this.wizardResult) {
-      lines.push(chalk.bgCyan.black(' Press [1-4] to select model, then [Enter] to generate bundle '));
-    } else {
-      lines.push(chalk.green.bold('✓ ' + this.wizardResult.replace(/\n/g, '\n  ')));
-      lines.push('');
-      lines.push(chalk.gray('Files exportable directly via `mtik hotspot`. Press [Esc] to reset.'));
-    }
+    lines.push(chalk.cyan.bold('Hotspot portal generator (offline)'));
+    lines.push('[1] All-in-one  [2] Voucher  [3] Member  [4] Dual');
+    lines.push(`Selected: ${this.wizardData.authModel || 'all-in-one'}`);
+    lines.push('[Enter] Edit venue, model, portal DNS, authentication URL, and trial');
+    if (this.wizardResult) lines.push(...this.wizardResult.split('\n'));
   }
 
   private renderMonitorContent(lines: string[]): void {
-    lines.push(chalk.cyan.bold('Real-Time Interface Bandwidth Monitor:'));
-    lines.push(chalk.gray('Tracks live RX/TX throughput across active WAN and LAN interfaces.'));
-    lines.push('');
-
-    lines.push('  Interface   │      RX (Download)      │       TX (Upload)       │ State');
-    lines.push('  ────────────┼────────────────────────┼─────────────────────────┼──────');
-    lines.push(`  ${chalk.bold('ether1')}      │  ${chalk.green('48.2 Mbps')}  [${renderGauge(48, 8)}] │  ${chalk.blue('12.5 Mbps')}  [${renderGauge(12, 8)}]  │ ACTIVE`);
-    lines.push(`  ${chalk.bold('ether2')}      │  ${chalk.green('24.1 Mbps')}  [${renderGauge(24, 8)}] │  ${chalk.blue(' 4.2 Mbps')}  [${renderGauge(4, 8)}]  │ ACTIVE`);
-    lines.push(`  ${chalk.bold('bridge-lan')}  │  ${chalk.green('72.3 Mbps')}  [${renderGauge(72, 8)}] │  ${chalk.blue('16.7 Mbps')}  [${renderGauge(16, 8)}]  │ ACTIVE`);
-    lines.push('');
-    lines.push(chalk.gray('Terminal polling updates dynamically. Run standalone via `mtik monitor`.'));
+    lines.push(chalk.cyan.bold('Interface traffic monitor'));
+    lines.push('No traffic samples available in this TUI yet.');
+    lines.push('Live router monitoring is deferred; no example rates are displayed.');
+    if (!this.offline) lines.push('Use `mtik monitor` with a configured router for live samples.');
   }
 
   private renderFleetContent(lines: string[]): void {
@@ -1252,45 +1213,38 @@ export class TuiDashboard {
     const fields: Array<{ key: keyof AddRouterForm; label: string; placeholder: string; isPassword?: boolean }> = [
       { key: 'name', label: '1. Router Name Identifier', placeholder: 'e.g. noc-e60iugs, home-hex' },
       { key: 'host', label: '2. Target IP Address / Domain', placeholder: 'e.g. 192.168.88.1' },
-      { key: 'port', label: '3. REST API Port', placeholder: '443 (default HTTPS)' },
-      { key: 'user', label: '4. Username', placeholder: 'admin' },
-      { key: 'password', label: '5. Password', placeholder: '••••••••', isPassword: true },
-      { key: 'model', label: '6. Hardware Model', placeholder: 'e.g. E60iUGS (hEX S 2024)' },
+      { key: 'preferBinary', label: '3. Transport', placeholder: 'Space toggles REST / Binary API' },
+      { key: 'port', label: '4. Router Port', placeholder: '443 (HTTPS) or 8729 (API TLS)' },
+      { key: 'user', label: '5. Username', placeholder: 'admin' },
+      { key: 'password', label: '6. Password', placeholder: '••••••••', isPassword: true },
+      { key: 'model', label: '7. Hardware Model', placeholder: 'e.g. E60iUGS (hEX S 2024)' },
     ];
 
     fields.forEach((f, idx) => {
       const isFocused = idx === this.addRouterField;
-      const rawVal = String(this.addRouterForm[f.key] || '');
+      const rawVal = f.key === 'preferBinary' ? (this.addRouterForm.preferBinary ? 'Binary API' : 'REST API') : String(this.addRouterForm[f.key] || '');
       const displayVal = f.isPassword ? '•'.repeat(rawVal.length) : rawVal;
 
       const cursor = isFocused ? chalk.cyan.bold(' ▶ ') : '   ';
       const labelText = isFocused ? chalk.bold.white(f.label) : chalk.gray(f.label);
-      lines.push(`${cursor}${labelText}:`);
+      lines.push(`${cursor}${labelText}: ${displayVal || f.placeholder}${isFocused ? '█' : ''}`);
 
-      const inputBox = isFocused
-        ? chalk.bgCyan.black(` ${displayVal || f.placeholder}█ `)
-        : chalk.gray(`   [ ${displayVal || f.placeholder} ]`);
-      lines.push(`   ${inputBox}`);
-      lines.push('');
     });
 
     lines.push(chalk.gray('Press [Enter] for next field / save. [Up/Down] to navigate. [Esc] to cancel.'));
   }
 
   private renderLinterContent(lines: string[]): void {
-    lines.push(chalk.cyan.bold('RouterOS Configuration Linter & Migration Tools:'));
-    lines.push(chalk.gray('Audit .rsc files for cleartext passwords, open DNS, and v6-to-v7 syntax errors.'));
-    lines.push('');
-
-    lines.push('  Automated Linter Rules:');
-    lines.push(`    ${chalk.green('✓')} Detection of exposed admin passwords & pre-shared keys`);
-    lines.push(`    ${chalk.green('✓')} Open DNS resolver without WAN drop validation`);
-    lines.push(`    ${chalk.green('✓')} Routing mark without v7 FIB table declaration`);
-    lines.push(`    ${chalk.green('✓')} Deprecated RouterOS v6 routing filter syntax`);
-    lines.push(`    ${chalk.green('✓')} Inverted firewall filter drop before established accept`);
-    lines.push('');
-    lines.push(chalk.gray('Run file audit via: `mtik lint -f /path/to/backup.rsc`'));
-    lines.push(chalk.gray('Transpile v6 filters via: `mtik migrate-filter -f /path/to/v6.rsc`'));
+    lines.push(chalk.cyan.bold('Offline RouterOS configuration linter'));
+    lines.push('[Enter/o] Open .rsc file  [↑/↓] Findings  [e] Export report');
+    lines.push('Static checks do not replace a live router audit.');
+    if (!this.lintResult) { lines.push('No file reviewed. Choose a local configuration (maximum 128 KiB).'); return; }
+    const { summary, findings } = this.lintResult;
+    lines.push(`${summary.total} findings: ${summary.critical} critical, ${summary.high} high, ${summary.warn} warnings`);
+    if (!findings.length) { lines.push('No findings detected by the supported static checks.'); return; }
+    const finding = findings[this.lintIndex]!;
+    lines.push(`Finding ${this.lintIndex + 1}/${findings.length}: ${finding.id} [${finding.severity}]`);
+    lines.push(`Line ${finding.line}: ${finding.rule}`, finding.message, finding.rawLine, `Suggested action: ${finding.remediation}`);
   }
 
   private renderProfilesContent(lines: string[]): void {
@@ -1311,7 +1265,7 @@ export class TuiDashboard {
     lines.push(`  ${chalk.cyan('Windsurf')}     : Add to ~/.codeium/windsurf/mcp_config.json`);
     lines.push(`  ${chalk.cyan('VS Code')}      : Cline / Roo Code settings`);
     lines.push('');
-    lines.push(chalk.gray('Auto-install MCP configuration into your IDEs via: `mtik mcp install`'));
+    lines.push(chalk.gray('Auto-install MCP configuration into your IDEs via: `mtik install-mcp`'));
   }
 
   private renderFooter(rows: number, cols: number): void {
@@ -1332,7 +1286,7 @@ export class TuiDashboard {
 
   private renderAttributionFooter(rows: number, cols: number): void {
     this.screen.moveTo(rows, 1);
-    const brand = chalk.gray(' MikroTik NetDevOps Suite v1.2.0');
+    const brand = chalk.gray(' MikroTik NetDevOps Suite v1.3.0');
     const authorLink = terminalLink('Ardian Ryan', 'https://github.com/ardianryan');
     const authorFull = `${chalk.gray('Engineered by ')}${chalk.cyan.bold(authorLink)}${chalk.gray(' (https://github.com/ardianryan) ')}`;
     const authorCompact = `${chalk.gray('Engineered by ')}${chalk.cyan.bold(authorLink)} `;

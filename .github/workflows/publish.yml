@@ -22,17 +22,17 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup Node.js 22.x
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22.x
           cache: 'npm'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Run Typecheck
         run: npm run typecheck
@@ -54,7 +54,7 @@ jobs:
 
       - name: Publish to npmjs.com
         if: ${{ inputs.dry_run != true }}
-        run: npm publish --access public || true
+        run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -68,6 +68,6 @@ jobs:
             fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
           "
           echo "//npm.pkg.github.com/:_authToken=\${NODE_AUTH_TOKEN}" > .npmrc
-          npm publish --registry=https://npm.pkg.github.com || true
+          npm publish --registry=https://npm.pkg.github.com
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

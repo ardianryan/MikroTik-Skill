@@ -1,15 +1,18 @@
 #!/usr/bin/env node
+import { parseLocalArgs, toolInputSchema } from '../safety/validation.js';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
   CallToolRequestSchema,
+  type CallToolResult,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { getDeviceConfig, listAllDevices } from '../config/profile.js';
 import { ConnectionManager } from '../client/connection-manager.js';
 import { SecurityAuditor } from '../safety/auditor.js';
 import { MangleOrderEngine } from '../safety/order-engine.js';
-import { SafeModeWatchdog } from '../safety/watchdog.js';
 import { ConfigSanitizer } from '../safety/sanitizer.js';
 import { CertifiedTemplateGenerator } from '../safety/templates.js';
 import { ChatPromptExporter } from '../safety/prompt-export.js';
@@ -19,6 +22,7 @@ import { RoutingMigrator } from '../safety/routing-migrator.js';
 import { RouterOsLinter } from '../safety/linter.js';
 import { HotspotPortalGenerator } from '../safety/hotspot-generator.js';
 
+export function createLocalMcpServer(): Server {
 const server = new Server(
   {
     name: 'mikrotik-skill',
@@ -178,7 +182,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: 'mikrotik_execute_command',
-        description: 'Execute arbitrary RouterOS CLI command or script atomically via REST /execute or binary API fallback. Sanitizes all output identifiers.',
+        description: 'Preview arbitrary RouterOS CLI scripts; applying requires interactive elicitation and an explicit rollback. Execution is not atomic.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -389,17 +393,33 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
         },
       },
-    ],
+    ].map((tool) => ({ ...tool, inputSchema: toolInputSchema(tool.name, true) })),
   };
 });
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
+  const { name } = request.params;
+  const args = parseLocalArgs(name, request.params.arguments);
   const targetDevice = args?.targetDevice ? String(args.targetDevice) : undefined;
   const config = getDeviceConfig(targetDevice);
-  const conn = new ConnectionManager(config);
+  const conn = new ConnectionManager(config, {
+    dryRun: args?.dryRun !== false,
+    reason: typeof args?.reason === 'string' ? args.reason : undefined,
+    rollback: typeof args?.rollback === 'string' ? args.rollback : undefined,
+    findingIds: Array.isArray(args?.findingIds) ? args.findingIds.filter((id): id is string => typeof id === 'string') : undefined,
+    checkTarget: () => { if (JSON.stringify(getDeviceConfig(targetDevice)) !== JSON.stringify(config)) throw new Error('Selected target changed during review'); },
+    confirm: async (preview) => {
+      const capabilities = server.getClientCapabilities()?.elicitation;
+      if (!capabilities || (!capabilities.form && Object.hasOwn(capabilities, 'url'))) return false;
+      const response = await server.elicitInput({ mode: 'form', message: preview + '\nApprove this exact operation?', requestedSchema: {
+        type: 'object', properties: { approve: { type: 'boolean', title: 'Apply reviewed operation' } }, required: ['approve'],
+      } });
+      return response.action === 'accept' && response.content?.approve === true;
+    },
+  });
 
   try {
+    const response = await (async (): Promise<CallToolResult> => {
     switch (name) {
       case 'mikrotik_test_connection': {
         const res = await conn.testConnection();
@@ -463,7 +483,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const ip = String(args?.ip);
         const table = String(args?.table);
         const comment = String(args?.comment || 'Forced client routing via MCP');
-        const dryRun = Boolean(args?.dryRun);
 
         const [tables, rules] = await Promise.all([
           conn.getRoutingTables(),
@@ -478,7 +497,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           };
         }
 
-        const analysis = MangleOrderEngine.analyzePlacement(rules, config.localBypassList);
+        MangleOrderEngine.analyzePlacement(rules, config.localBypassList);
         const ruleData = {
           chain: 'prerouting',
           action: 'mark-routing',
@@ -488,46 +507,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           comment,
         };
 
-        if (dryRun) {
-          return {
-            content: [
-              {
-                type: 'text',
-                text: JSON.stringify(
-                  {
-                    status: 'DRY_RUN_SUCCESS',
-                    recommendedIndex: analysis.recommendedIndex,
-                    rule: ruleData,
-                  },
-                  null,
-                  2
-                ),
-              },
-            ],
-          };
-        }
-
-        const watchdog = new SafeModeWatchdog(conn);
-        await watchdog.arm(`/ip/firewall/mangle/remove [find comment="${comment}"]`, config.watchdogTimeout);
-        await conn.addMangleRule(ruleData);
-
-        const health = await conn.testConnection();
-        if (health.successful) {
-          await watchdog.disarm();
-          return {
-            content: [
-              {
-                type: 'text',
-                text: JSON.stringify({ status: 'APPLIED_AND_VERIFIED', rule: ruleData }, null, 2),
-              },
-            ],
-          };
-        } else {
-          return {
-            isError: true,
-            content: [{ type: 'text', text: 'Mutation resulted in connectivity degradation. Watchdog triggered rollback.' }],
-          };
-        }
+        const result = await conn.addMangleRule(ruleData);
+        return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
       }
 
       case 'mikrotik_manage_dhcp_lease': {
@@ -536,14 +517,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const ip = String(args?.ip);
           const mac = String(args?.mac);
           const comment = String(args?.comment || 'Static reservation via MCP');
-          await conn.addDhcpLease({
-            address: ip,
-            'mac-address': mac,
-            comment,
-          });
-          return {
-            content: [{ type: 'text', text: `Successfully added static lease for ${ip} (${mac})` }],
-          };
+          const result = await conn.addDhcpLease({ address: ip, 'mac-address': mac, comment });
+          return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+
         } else {
           const leases = await conn.getDhcpLeases();
           return {
@@ -585,10 +561,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const action = args?.action;
         if (action === 'restart') {
           const id = String(args?.id);
-          await conn.restartContainer(id);
-          return {
-            content: [{ type: 'text', text: `Container ${id} restart command dispatched.` }],
-          };
+          const result = await conn.restartContainer(id);
+          return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+
         } else {
           const containers = await conn.getContainers();
           return {
@@ -628,11 +603,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'mikrotik_generate_hotspot_portal': {
         const bundle = HotspotPortalGenerator.generate({
           venueName: args?.venueName as string | undefined,
-          model: args?.model as any,
+          model: args?.model as import('../safety/hotspot-generator.js').HotspotAuthModel | undefined,
           enableTrial: args?.enableTrial as boolean | undefined,
           trialUptime: args?.trialUptime as string | undefined,
           voucherRateLimit: args?.voucherRateLimit as string | undefined,
-          paymentGateway: args?.paymentGateway as any,
+          paymentGateway: args?.paymentGateway as import('../safety/hotspot-generator.js').HotspotGeneratorOptions['paymentGateway'],
           dnsName: args?.dnsName as string | undefined,
         });
         return {
@@ -673,12 +648,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'mikrotik_calculate_pcc': {
-        const wans = args?.wans as any;
+        const wans = args?.wans as import('../safety/pcc-calculator.js').WanInput[];
         if (!wans || !Array.isArray(wans) || wans.length < 2) {
           throw new Error('Parameter "wans" must be an array of at least 2 WAN interface configs.');
         }
         const lanInterface = args?.lanInterface ? String(args.lanInterface) : undefined;
-        const classifier = args?.classifier as any;
+        const classifier = args?.classifier as import('../safety/pcc-calculator.js').PccOptions['classifier'];
         const result = PccCalculator.calculate({ wans, lanInterface, classifier });
         return {
           content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
@@ -738,7 +713,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const topics = Array.isArray(args?.topics) ? (args.topics as string[]).map(String) : undefined;
         const logs = await conn.getLogs({ limit, topics });
         return {
-          content: [{ type: 'text', text: JSON.stringify(logs, null, 2) }],
+          content: [{ type: 'text', text: JSON.stringify(ConfigSanitizer.sanitizeJson(logs), null, 2) }],
         };
       }
 
@@ -788,22 +763,29 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
+    })();
+    if (name === 'mikrotik_provision_wireguard') return response;
+    return { ...response, content: response.content.map((item) => item.type === 'text' ? { ...item, text: ConfigSanitizer.sanitizeOutput(item.text) } : item) };
   } catch (err) {
     return {
       isError: true,
-      content: [{ type: 'text', text: `Tool error: ${err instanceof Error ? err.message : String(err)}` }],
+      content: [{ type: 'text', text: `Tool error: ${ConfigSanitizer.sanitizeText(err instanceof Error ? err.message : String(err))}` }],
     };
   } finally {
     await conn.close();
   }
 });
 
-async function main() {
+return server;
+}
+
+export async function startLocalMcpServer() {
+  const server = createLocalMcpServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
 
-main().catch((err) => {
-  console.error('Fatal MCP Server error:', err);
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) startLocalMcpServer().catch((err) => {
+  console.error('Fatal MCP Server error:', ConfigSanitizer.sanitizeText(err instanceof Error ? err.message : String(err)));
   process.exit(1);
 });

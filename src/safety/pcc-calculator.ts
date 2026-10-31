@@ -1,3 +1,4 @@
+import { PccSchema } from './validation.js';
 export interface WanInput {
   name: string;
   gateway?: string;
@@ -18,6 +19,15 @@ export interface PccResult {
   script: string;
 }
 
+export function parsePccWanSpecs(specs: string): WanInput[] {
+  const wans = specs.split(',').map((part) => {
+    const match = /^([^=@,\s]+)=(\d+)(?:@([^@,\s]+))?$/.exec(part.trim());
+    if (!match) throw new Error('WAN format: ISP1=2@192.0.2.1,ISP2=1@198.51.100.1');
+    return { name: match[1]!, weight: Number(match[2]), ...(match[3] ? { gateway: match[3] } : {}) };
+  });
+  return PccSchema.parse({ wans }).wans;
+}
+
 function gcd(a: number, b: number): number {
   let x = Math.abs(a);
   let y = Math.abs(b);
@@ -31,6 +41,7 @@ function gcd(a: number, b: number): number {
 
 export class PccCalculator {
   static calculate(options: PccOptions): PccResult {
+    options = PccSchema.parse(options);
     const wans = options.wans && options.wans.length >= 2 ? options.wans : [
       { name: 'ISP1', weight: 1, gateway: '192.168.1.1' },
       { name: 'ISP2', weight: 1, gateway: '192.168.2.1' },
@@ -46,7 +57,8 @@ export class PccCalculator {
     const normalizedWeights = rawWeights.map((w) => w / overallGcd);
     const totalStreams = normalizedWeights.reduce((sum, w) => sum + w, 0);
 
-    const streamsPerWan: Record<string, number[]> = {};
+    if (totalStreams > 256) throw Object.assign(new Error('PCC supports at most 256 normalized streams'), { status: 400 });
+    const streamsPerWan: Record<string, number[]> = Object.create(null) as Record<string, number[]>;
     let streamIndex = 0;
 
     for (let i = 0; i < wans.length; i++) {

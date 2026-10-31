@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import fs from 'node:fs';
 import { RouterOSAPI } from 'node-routeros';
 import type { RouterConfig } from '../config/profile.js';
 import type {
@@ -37,7 +39,7 @@ export class RouterOsBinaryClient {
       user: this.config.user,
       password: this.config.password,
       port,
-      tls: this.config.useSsl ? { rejectUnauthorized: false } : undefined,
+      tls: this.config.useSsl ? { rejectUnauthorized: true, ...(this.config.caFile ? { ca: fs.readFileSync(this.config.caFile) } : {}) } : undefined,
       timeout: 10,
     });
 
@@ -47,9 +49,10 @@ export class RouterOsBinaryClient {
 
   async close(): Promise<void> {
     if (this.api && this.isConnected) {
-      this.api.close();
+      const api = this.api;
       this.isConnected = false;
       this.api = null;
+      await api.close();
     }
   }
 
@@ -99,7 +102,7 @@ export class RouterOsBinaryClient {
   async setMangleRule(id: string, patch: Partial<MangleRule>): Promise<unknown> {
     await this.connect();
     if (!this.api) throw new Error('Not connected');
-    const parts: string[] = ['/ip/firewall/mangle/set', `numbers=${id}`];
+    const parts: string[] = ['/ip/firewall/mangle/set', `=numbers=${id}`];
     for (const [key, val] of Object.entries(patch)) {
       if (val !== undefined && key !== '.id') {
         parts.push(`=${key}=${val}`);
@@ -111,7 +114,7 @@ export class RouterOsBinaryClient {
   async removeMangleRule(id: string): Promise<unknown> {
     await this.connect();
     if (!this.api) throw new Error('Not connected');
-    return this.api.write(['/ip/firewall/mangle/remove', `numbers=${id}`]);
+    return this.api.write(['/ip/firewall/mangle/remove', `=numbers=${id}`]);
   }
 
   async getDhcpLeases(): Promise<DhcpLease[]> {
@@ -156,7 +159,13 @@ export class RouterOsBinaryClient {
     return this.writeQuery<InterfaceItem>('/interface/print');
   }
 
-  async addScheduler(name: string, interval: string, onEvent: string): Promise<unknown> {
+  async getClock(): Promise<{ date: string; time: string }> {
+    const rows = await this.writeQuery<{ date: string; time: string }>('/system/clock/print');
+    if (!rows[0]) throw new Error('Router clock is unavailable');
+    return rows[0];
+  }
+
+  async addScheduler(name: string, interval: string, onEvent: string, start: { 'start-date': string; 'start-time': string }): Promise<unknown> {
     await this.connect();
     if (!this.api) throw new Error('Not connected');
     return this.api.write([
@@ -164,13 +173,25 @@ export class RouterOsBinaryClient {
       `=name=${name}`,
       `=interval=${interval}`,
       `=on-event=${onEvent}`,
+      `=start-date=${start['start-date']}`,
+      `=start-time=${start['start-time']}`,
     ]);
   }
 
   async removeScheduler(name: string): Promise<unknown> {
     await this.connect();
     if (!this.api) throw new Error('Not connected');
-    return this.api.write(['/system/scheduler/remove', `numbers=${name}`]);
+    return this.api.write(['/system/scheduler/remove', `=numbers=${name}`]);
+  }
+
+  async exportConfig(): Promise<unknown> {
+    await this.connect();
+    if (!this.api) throw new Error('Not connected');
+    return this.api.write(['/export', '=compact=']);
+  }
+
+  async getSchedulers(): Promise<Array<{ '.id'?: string; name: string; 'on-event'?: string; disabled?: string | boolean }>> {
+    return this.writeQuery('/system/scheduler/print');
   }
 
   async getContainers(): Promise<ContainerItem[]> {
@@ -180,15 +201,15 @@ export class RouterOsBinaryClient {
   async restartContainer(nameOrId: string): Promise<unknown> {
     await this.connect();
     if (!this.api) throw new Error('Not connected');
-    await this.api.write(['/container/stop', `numbers=${nameOrId}`]);
-    return this.api.write(['/container/start', `numbers=${nameOrId}`]);
+    await this.api.write(['/container/stop', `=numbers=${nameOrId}`]);
+    return this.api.write(['/container/start', `=numbers=${nameOrId}`]);
   }
 
   async getDnsAdlists(): Promise<AdlistItem[]> {
     return this.writeQuery<AdlistItem>('/ip/dns/adlist/print');
   }
 
-  async addDnsAdlist(url: string, sslVerify: boolean = false): Promise<unknown> {
+  async addDnsAdlist(url: string, sslVerify: boolean = true): Promise<unknown> {
     await this.connect();
     if (!this.api) throw new Error('Not connected');
     return this.api.write([
@@ -221,10 +242,10 @@ export class RouterOsBinaryClient {
   async executeScript(script: string): Promise<unknown> {
     await this.connect();
     if (!this.api) throw new Error('Not connected');
-    const tempName = `mtik_tmp_${Date.now()}`;
+    const tempName = `mtik_tmp_${randomUUID().replaceAll('-', '')}`;
     await this.api.write(['/system/script/add', `=name=${tempName}`, `=source=${script}`]);
     try {
-      return await this.api.write(['/system/script/run', `=number=${tempName}`]);
+      return await this.api.write(['/system/script/run', `=numbers=${tempName}`]);
     } finally {
       await this.api.write(['/system/script/remove', `=numbers=${tempName}`]).catch(() => {});
     }

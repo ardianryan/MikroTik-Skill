@@ -1,4 +1,5 @@
-import { test, describe, after } from 'node:test';
+import { once } from 'node:events';
+import { test, describe, after, before } from 'node:test';
 import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';
 import { MikroTikHttpServer } from '../src/server/http.js';
@@ -6,8 +7,11 @@ import { MikroTikHttpServer } from '../src/server/http.js';
 describe('MikroTikHttpServer (Pure Knowledge Engine)', () => {
   const server = new MikroTikHttpServer();
   const httpServer = server.listen(0);
-  const port = (httpServer.address() as AddressInfo).port;
-  const baseUrl = `http://localhost:${port}`;
+  let baseUrl: string;
+  before(async () => {
+    await once(httpServer, 'listening');
+    baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
+  });
 
   after(() => {
     httpServer.close();
@@ -18,7 +22,7 @@ describe('MikroTikHttpServer (Pure Knowledge Engine)', () => {
     assert.equal(res.status, 200);
     const data = (await res.json()) as { name: string; version: string; mode: string; mcp?: { sse: string; streamableHttp: string } };
     assert.equal(data.name, 'mikrotik-skill');
-    assert.equal(data.version, '1.1.0');
+    assert.equal(data.version, '1.3.0');
     assert.equal(data.mode, 'knowledge-and-intelligence');
     assert.ok(data.mcp?.sse.includes('/sse'));
     assert.ok(data.mcp?.streamableHttp.includes('/mcp'));

@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
+import { createInterface } from 'node:readline/promises';
+import type { MutationOptions } from '../safety/mutation.js';
 import path from 'node:path';
 import { Command } from 'commander';
 import chalk from 'chalk';
@@ -15,13 +17,12 @@ import {
 import { ConnectionManager } from '../client/connection-manager.js';
 import { SecurityAuditor } from '../safety/auditor.js';
 import { MangleOrderEngine } from '../safety/order-engine.js';
-import { SafeModeWatchdog } from '../safety/watchdog.js';
 import { ConfigSanitizer } from '../safety/sanitizer.js';
 import { formatBatchDiff, type DiffEntry } from '../safety/diff.js';
 import { McpInstaller, type IdeTarget } from '../mcp/installer.js';
 import { CertifiedTemplateGenerator } from '../safety/templates.js';
 import { ChatPromptExporter } from '../safety/prompt-export.js';
-import { PccCalculator } from '../safety/pcc-calculator.js';
+import { PccCalculator, parsePccWanSpecs } from '../safety/pcc-calculator.js';
 import { WireGuardProvisioner } from '../safety/wireguard.js';
 import { RoutingMigrator } from '../safety/routing-migrator.js';
 import { RouterOsLinter } from '../safety/linter.js';
@@ -39,21 +40,51 @@ import {
 import type { InterfaceTrafficMonitor } from '../client/types.js';
 
 const program = new Command();
+let commandOptions: Record<string, unknown> = {};
+program.hook('preAction', (_command, action) => { commandOptions = action.optsWithGlobals(); });
 
 program
   .name('mtik')
   .description('MikroTik RouterOS v7 Production Automation & Management CLI')
-  .version('1.2.0');
+  .version('1.3.0')
+  .option('--apply', 'Apply after interactive review', false)
+  .option('--reason <text>', 'Reason for a manual mutation')
+  .option('--findings <ids>', 'Comma-separated audit finding IDs')
+  .option('--rollback <script>', 'Explicit RouterOS rollback script');
+
+function cliMutationOptions(config: ReturnType<typeof getDeviceConfig>, device?: string): MutationOptions {
+  const options = commandOptions;
+  return {
+    dryRun: options.apply !== true || options.dryRun === true,
+    reason: options.reason as string | undefined,
+    findingIds: typeof options.findings === 'string' ? options.findings.split(',').map((id: string) => id.trim()) : undefined,
+    rollback: options.rollback as string | undefined,
+    checkTarget: () => { if (JSON.stringify(getDeviceConfig(device)) !== JSON.stringify(config)) throw new Error('Selected target changed during review'); },
+    confirm: async (preview) => {
+      console.log(preview);
+      if (!process.stdin.isTTY || !process.stdout.isTTY) return false;
+      const terminal = createInterface({ input: process.stdin, output: process.stdout });
+      try { return (await terminal.question('Apply this exact operation? Type APPLY: ')).trim() === 'APPLY'; }
+      finally { terminal.close(); }
+    },
+  };
+}
+
+async function reportMutation(result: Promise<unknown>): Promise<boolean> {
+  const value = await result;
+  console.log(JSON.stringify(ConfigSanitizer.sanitizeJson(value), null, 2));
+  return typeof value === 'object' && value !== null && 'status' in value && value.status === 'DRY_RUN_SUCCESS';
+}
 
 program
   .command('test')
   .description('Test connectivity and transport detection (REST API vs Native API Port 8728).')
   .action(async () => {
-    const config = loadRouterConfig();
+    const config = getDeviceConfig();
     const safeCfg = sanitizeConfig(config);
     console.log(chalk.blue(`Target: ${safeCfg.host} (User: ${safeCfg.user})`));
 
-    const conn = new ConnectionManager(config);
+    const conn = new ConnectionManager(config, cliMutationOptions(config));
     try {
       const result = await conn.testConnection();
       if (result.successful) {
@@ -76,8 +107,8 @@ program
   .command('status')
   .description('Show router health, resource utilization, and interface overview.')
   .action(async () => {
-    const config = loadRouterConfig();
-    const conn = new ConnectionManager(config);
+    const config = getDeviceConfig();
+    const conn = new ConnectionManager(config, cliMutationOptions(config));
     try {
       const [resource, ifaces, leases] = await Promise.all([
         conn.getResource(),
@@ -94,7 +125,7 @@ program
       console.log(`Interfaces    : ${ifaces.length} total (${ifaces.filter((i) => i.running === true || i.running === 'true').length} running)`);
       console.log(`DHCP Leases   : ${leases.length} active leases\n`);
     } catch (err) {
-      console.error(chalk.red(`Failed to fetch status: ${err instanceof Error ? err.message : String(err)}`));
+      console.error(chalk.red(`Failed to fetch status: ${ConfigSanitizer.sanitizeText(err instanceof Error ? err.message : String(err))}`));
       process.exitCode = 1;
     } finally {
       await conn.close();
@@ -107,8 +138,8 @@ program
   .option('-f, --format <type>', 'Report format: text or markdown', 'text')
   .option('-o, --output <file>', 'Save audit report to file')
   .action(async (options: { format?: string; output?: string }) => {
-    const config = loadRouterConfig();
-    const conn = new ConnectionManager(config);
+    const config = getDeviceConfig();
+    const conn = new ConnectionManager(config, cliMutationOptions(config));
     const auditor = new SecurityAuditor(conn);
 
     try {
@@ -129,13 +160,14 @@ program
       }
 
       console.log(chalk.bold(`\nAudit Report for ${report.routerIdentity} (${report.firmwareVersion})`));
-      console.log(`Status: ${report.overallScore === 'SECURE' ? chalk.green('SECURE') : report.overallScore === 'NEEDS_ATTENTION' ? chalk.yellow('NEEDS ATTENTION') : chalk.red('VULNERABLE')}\n`);
+      console.log(`Status: ${report.overallScore === 'SECURE' ? chalk.green('SECURE') : report.overallScore === 'VULNERABLE' ? chalk.red('VULNERABLE') : chalk.yellow(report.overallScore.replaceAll('_', ' '))}\n`);
 
       for (const item of report.items) {
         let badge = chalk.green('[PASS]');
         if (item.status === 'WARN') badge = chalk.yellow('[WARN]');
         if (item.status === 'CRITICAL') badge = chalk.red('[CRIT]');
         if (item.status === 'INFO') badge = chalk.blue('[INFO]');
+        if (item.status === 'UNKNOWN') badge = chalk.yellow('[UNKNOWN]');
 
         const idPrefix = item.id ? chalk.cyan(`[${item.id}] `) : '';
         console.log(`${idPrefix}${badge} ${chalk.bold(item.title)}: ${item.detail}`);
@@ -151,7 +183,7 @@ program
         console.log(chalk.green(`Audit report markdown copy saved to: ${options.output}`));
       }
     } catch (err) {
-      console.error(chalk.red(`Audit execution failed: ${err instanceof Error ? err.message : String(err)}`));
+      console.error(chalk.red(`Audit execution failed: ${ConfigSanitizer.sanitizeText(err instanceof Error ? err.message : String(err))}`));
       process.exitCode = 1;
     } finally {
       await conn.close();
@@ -163,8 +195,8 @@ program
   .description('Manage and inspect firewall mangle rules.')
   .option('-l, --list', 'List active mangle rules in order', true)
   .action(async () => {
-    const config = loadRouterConfig();
-    const conn = new ConnectionManager(config);
+    const config = getDeviceConfig();
+    const conn = new ConnectionManager(config, cliMutationOptions(config));
 
     try {
       const rules = await conn.getMangleRules();
@@ -185,7 +217,7 @@ program
       });
       console.log('');
     } catch (err) {
-      console.error(chalk.red(`Failed to list mangle rules: ${err instanceof Error ? err.message : String(err)}`));
+      console.error(chalk.red(`Failed to list mangle rules: ${ConfigSanitizer.sanitizeText(err instanceof Error ? err.message : String(err))}`));
       process.exitCode = 1;
     } finally {
       await conn.close();
@@ -200,8 +232,8 @@ program
   .option('--comment <text>', 'Descriptive comment for the rule', 'Forced client routing')
   .option('--dry-run', 'Simulate changes without applying to router', false)
   .action(async (opts) => {
-    const config = loadRouterConfig();
-    const conn = new ConnectionManager(config);
+    const config = getDeviceConfig();
+    const conn = new ConnectionManager(config, cliMutationOptions(config));
 
     try {
       const [tables, rules] = await Promise.all([
@@ -237,30 +269,10 @@ program
       console.log(chalk.bold('\nProposed Changes:'));
       console.log(formatBatchDiff([diff]));
 
-      if (opts.dryRun) {
-        console.log(chalk.yellow('Dry-run mode active. No changes were applied.\n'));
-        return;
-      }
-
-      // 3. Apply changes with Watchdog protection
-      const watchdog = new SafeModeWatchdog(conn);
-      console.log(chalk.blue(`Arming 30-second safe-mode watchdog...`));
-      await watchdog.arm(`/ip/firewall/mangle/remove [find comment="${opts.comment}"]`, config.watchdogTimeout);
-
-      console.log(chalk.blue('Injecting mangle rule...'));
-      await conn.addMangleRule(targetRule);
-
-      // Verify connection health after mutation
-      const test = await conn.testConnection();
-      if (test.successful) {
-        await watchdog.disarm();
-        console.log(chalk.green('Rule successfully applied and watchdog disarmed.\n'));
-      } else {
-        console.error(chalk.red('Router heartbeat check failed! Watchdog will automatically rollback.\n'));
-        process.exitCode = 1;
-      }
+      const result = await conn.addMangleRule(targetRule);
+      console.log(JSON.stringify(ConfigSanitizer.sanitizeJson(result), null, 2));
     } catch (err) {
-      console.error(chalk.red(`Operation failed: ${err instanceof Error ? err.message : String(err)}`));
+      console.error(chalk.red(`Operation failed: ${ConfigSanitizer.sanitizeText(err instanceof Error ? err.message : String(err))}`));
       process.exitCode = 1;
     } finally {
       await conn.close();
@@ -276,8 +288,8 @@ program
   .option('--mac <address>', 'MAC address for static lease')
   .option('--comment <text>', 'Client name / description')
   .action(async (opts) => {
-    const config = loadRouterConfig();
-    const conn = new ConnectionManager(config);
+    const config = getDeviceConfig();
+    const conn = new ConnectionManager(config, cliMutationOptions(config));
 
     try {
       if (opts.add) {
@@ -300,7 +312,7 @@ program
         };
 
         console.log(formatBatchDiff([diff]));
-        await conn.addDhcpLease(leaseData);
+        if (await reportMutation(conn.addDhcpLease(leaseData))) return;
         console.log(chalk.green('Static DHCP lease created successfully.\n'));
       } else {
         const leases = await conn.getDhcpLeases();
@@ -315,7 +327,7 @@ program
         console.log('');
       }
     } catch (err) {
-      console.error(chalk.red(`DHCP operation failed: ${err instanceof Error ? err.message : String(err)}`));
+      console.error(chalk.red(`DHCP operation failed: ${ConfigSanitizer.sanitizeText(err instanceof Error ? err.message : String(err))}`));
       process.exitCode = 1;
     } finally {
       await conn.close();
@@ -328,8 +340,8 @@ program
   .option('-o, --output <dir>', 'Output directory', './backups')
   .option('--sanitize', 'Anonymize MAC addresses, serials, and passwords in the snapshot', false)
   .action(async (opts) => {
-    const config = loadRouterConfig();
-    const conn = new ConnectionManager(config);
+    const config = getDeviceConfig();
+    const conn = new ConnectionManager(config, cliMutationOptions(config));
 
     try {
       console.log(chalk.blue('Collecting router configuration data...'));
@@ -374,7 +386,7 @@ program
       console.log(chalk.green(`Configuration snapshot successfully saved to:`));
       console.log(`  ${chalk.bold(targetPath)}\n`);
     } catch (err) {
-      console.error(chalk.red(`Backup failed: ${err instanceof Error ? err.message : String(err)}`));
+      console.error(chalk.red(`Backup failed: ${ConfigSanitizer.sanitizeText(err instanceof Error ? err.message : String(err))}`));
       process.exitCode = 1;
     } finally {
       await conn.close();
@@ -386,8 +398,8 @@ program
   .description('Live throughput and traffic monitor across interfaces.')
   .option('-i, --interface <name>', 'Specific interface to monitor')
   .action(async (opts) => {
-    const config = loadRouterConfig();
-    const conn = new ConnectionManager(config);
+    const config = getDeviceConfig();
+    const conn = new ConnectionManager(config, cliMutationOptions(config));
 
     try {
       console.log(chalk.cyan.bold('\n=== MikroTik Live Traffic Monitor (Press Ctrl+C to stop) ==='));
@@ -431,7 +443,7 @@ program
         process.exit(0);
       });
     } catch (err) {
-      console.error(chalk.red(`Monitor error: ${err instanceof Error ? err.message : String(err)}`));
+      console.error(chalk.red(`Monitor error: ${ConfigSanitizer.sanitizeText(err instanceof Error ? err.message : String(err))}`));
       await conn.close();
       process.exitCode = 1;
     }
@@ -443,13 +455,13 @@ program
   .option('-l, --list', 'List active containers', true)
   .option('--restart <id>', 'Restart a specific container by ID or name')
   .action(async (opts) => {
-    const config = loadRouterConfig();
-    const conn = new ConnectionManager(config);
+    const config = getDeviceConfig();
+    const conn = new ConnectionManager(config, cliMutationOptions(config));
 
     try {
       if (opts.restart) {
         console.log(chalk.blue(`Restarting container ${opts.restart}...`));
-        await conn.restartContainer(opts.restart);
+        if (await reportMutation(conn.restartContainer(opts.restart))) return;
         console.log(chalk.green(`Container ${opts.restart} restart command sent.\n`));
       } else {
         const containers = await conn.getContainers();
@@ -466,7 +478,7 @@ program
         console.log('');
       }
     } catch (err) {
-      console.error(chalk.red(`Container operation failed: ${err instanceof Error ? err.message : String(err)}`));
+      console.error(chalk.red(`Container operation failed: ${ConfigSanitizer.sanitizeText(err instanceof Error ? err.message : String(err))}`));
       process.exitCode = 1;
     } finally {
       await conn.close();
@@ -479,13 +491,13 @@ program
   .option('-l, --list', 'Show configured adlist feeds', true)
   .option('--add <url>', 'Add new adlist feed URL')
   .action(async (opts) => {
-    const config = loadRouterConfig();
-    const conn = new ConnectionManager(config);
+    const config = getDeviceConfig();
+    const conn = new ConnectionManager(config, cliMutationOptions(config));
 
     try {
       if (opts.add) {
         console.log(chalk.blue(`Adding adlist feed: ${opts.add}...`));
-        await conn.addDnsAdlist(opts.add);
+        if (await reportMutation(conn.addDnsAdlist(opts.add))) return;
         console.log(chalk.green('Adlist feed registered successfully.\n'));
       } else {
         const adlists = await conn.getDnsAdlists();
@@ -501,7 +513,7 @@ program
         console.log('');
       }
     } catch (err) {
-      console.error(chalk.red(`Adlist operation failed: ${err instanceof Error ? err.message : String(err)}`));
+      console.error(chalk.red(`Adlist operation failed: ${ConfigSanitizer.sanitizeText(err instanceof Error ? err.message : String(err))}`));
       process.exitCode = 1;
     } finally {
       await conn.close();
@@ -542,7 +554,7 @@ program
         console.log('');
       }
     } catch (err) {
-      console.error(chalk.red(`Profile operation failed: ${err instanceof Error ? err.message : String(err)}`));
+      console.error(chalk.red(`Profile operation failed: ${ConfigSanitizer.sanitizeText(err instanceof Error ? err.message : String(err))}`));
       process.exitCode = 1;
     }
   });
@@ -590,7 +602,7 @@ program
 
       console.log(chalk.green.bold('\nInstallation complete! Restart your IDE to activate MikroTik tools.\n'));
     } catch (err) {
-      console.error(chalk.red(`Installation failed: ${err instanceof Error ? err.message : String(err)}`));
+      console.error(chalk.red(`Installation failed: ${ConfigSanitizer.sanitizeText(err instanceof Error ? err.message : String(err))}`));
       process.exitCode = 1;
     }
   });
@@ -599,7 +611,8 @@ program
   .command('mcp')
   .description('Start Model Context Protocol (MCP) server over STDIO for AI agent integration (Antigravity, Cursor, Claude).')
   .action(async () => {
-    await import('../mcp/index.js');
+    const { startLocalMcpServer } = await import('../mcp/index.js');
+    await startLocalMcpServer();
   });
 
 program
@@ -645,20 +658,21 @@ program
 program
   .command('exec')
   .alias('run')
-  .description('Execute a raw RouterOS CLI script atomically via REST /execute or API fallback.')
+  .description('Preview or interactively apply a RouterOS CLI script with explicit rollback.')
   .argument('<script>', 'The RouterOS script command to execute')
   .action(async (script) => {
-    const config = loadRouterConfig();
-    const conn = new ConnectionManager(config);
+    const config = getDeviceConfig();
+    const conn = new ConnectionManager(config, cliMutationOptions(config));
     try {
-      console.log(chalk.blue(`Executing on router: ${chalk.bold(script)}`));
+      console.log(chalk.blue('Preparing guarded router execution...'));
       const res = await conn.executeScript(script);
+      if (await reportMutation(Promise.resolve(res))) return;
       console.log(chalk.green('✔ Command executed successfully.'));
       if (res && (typeof res !== 'object' || Object.keys(res as object).length > 0)) {
         console.log(ConfigSanitizer.sanitizeJson(res));
       }
     } catch (err) {
-      console.error(chalk.red(`Execution failed: ${err instanceof Error ? err.message : String(err)}`));
+      console.error(chalk.red(`Execution failed: ${ConfigSanitizer.sanitizeText(err instanceof Error ? err.message : String(err))}`));
       process.exitCode = 1;
     } finally {
       await conn.close();
@@ -672,8 +686,8 @@ program
   .argument('<endpoint>', 'REST path (e.g. /ip/address, /system/resource, /export)')
   .argument('[data]', 'Optional JSON request body string')
   .action(async (method, endpoint, data) => {
-    const config = loadRouterConfig();
-    const conn = new ConnectionManager(config);
+    const config = getDeviceConfig();
+    const conn = new ConnectionManager(config, cliMutationOptions(config));
     try {
       let body: unknown = undefined;
       if (data) {
@@ -689,7 +703,7 @@ program
       console.log(chalk.green('✔ Response:'));
       console.log(JSON.stringify(ConfigSanitizer.sanitizeJson(res), null, 2));
     } catch (err) {
-      console.error(chalk.red(`REST call failed: ${err instanceof Error ? err.message : String(err)}`));
+      console.error(chalk.red(`REST call failed: ${ConfigSanitizer.sanitizeText(err instanceof Error ? err.message : String(err))}`));
       process.exitCode = 1;
     } finally {
       await conn.close();
@@ -716,10 +730,12 @@ program
   .command('serve')
   .description('Start HTTP & OpenAPI Gateway Server for ChatGPT Actions and Remote MCP.')
   .option('-p, --port <number>', 'HTTP server port', '3000')
+  .option('--host <address>', 'HTTP bind address', '127.0.0.1')
+  .option('--url <url>', 'External gateway origin behind a trusted proxy')
   .action((opts) => {
     const port = parseInt(opts.port, 10) || 3000;
-    const server = new MikroTikHttpServer({ port });
-    server.listen(port);
+    const server = new MikroTikHttpServer({ port, serverUrl: opts.url });
+    server.listen(port, opts.host);
     console.log(chalk.blue(`MikroTik HTTP Knowledge Server listening on port ${port}`));
     console.log(chalk.gray(`- Health: http://localhost:${port}/health`));
     console.log(chalk.gray(`- OpenAPI: http://localhost:${port}/openapi.json`));
@@ -745,20 +761,12 @@ program
 program
   .command('pcc')
   .description('Generate mathematically normalized N-WAN asymmetric PCC load balancing configuration for RouterOS v7.')
-  .requiredOption('-w, --wans <specs>', 'Comma-separated WAN specs with weight/bandwidth (e.g. "ISP1=100,ISP2=50" or "ether1=1,ether2=1")')
+  .requiredOption('-w, --wans <specs>', 'WAN name=weight with optional @gateway (e.g. "ISP1=2@192.0.2.1,ISP2=1@198.51.100.1")')
   .option('-l, --lan <interface>', 'LAN bridge/interface name', 'bridge-lan')
   .option('-c, --classifier <type>', 'PCC classifier type: both-addresses | both-addresses-and-ports | src-address | dst-address', 'both-addresses-and-ports')
   .option('-o, --output <file>', 'Save generated script to a file')
   .action((opts) => {
-    const wanConfigs = opts.wans.split(',').map((part: string) => {
-      const [name, weightStr] = part.trim().split('=');
-      const weight = parseInt(weightStr || '1', 10) || 1;
-      return {
-        name,
-        weight,
-        gateway: `gateway_${name}`,
-      };
-    });
+    const wanConfigs = parsePccWanSpecs(opts.wans);
 
     const result = PccCalculator.calculate({
       wans: wanConfigs,
@@ -767,6 +775,7 @@ program
     });
 
     console.log(chalk.bold(`\n=== Asymmetric PCC Ratio Calculation ===`));
+    if (wanConfigs.some((wan) => !wan.gateway)) console.log(chalk.yellow('Gateways not supplied use sample addresses; review or specify @gateway before applying.'));
     console.log(`Total Streams : ${chalk.cyan(result.totalStreams)}`);
     console.log(`Allocations   :`);
     for (const [wan, streams] of Object.entries(result.streamsPerWan)) {
@@ -865,7 +874,8 @@ program
 
     if (opts.output) {
       const outPath = path.resolve(process.cwd(), opts.output);
-      fs.writeFileSync(outPath, result.clientConfig, 'utf-8');
+      fs.writeFileSync(outPath, result.clientConfig, { encoding: 'utf-8', mode: 0o600 });
+      fs.chmodSync(outPath, 0o600);
       console.log(chalk.green(`✔ Client configuration saved to: ${outPath}`));
     } else {
       console.log(chalk.gray('# Client .conf File:\n'));
@@ -977,7 +987,7 @@ program
   .option('-t, --topic <topics>', 'Comma-separated topic filters (e.g. firewall,dhcp,warning)')
   .action(async (opts) => {
     const config = getDeviceConfig(opts.device);
-    const conn = new ConnectionManager(config);
+    const conn = new ConnectionManager(config, cliMutationOptions(config, opts.device));
     try {
       const limit = parseInt(opts.limit, 10) || 30;
       const topics = opts.topic ? opts.topic.split(',').map((s: string) => s.trim()) : undefined;
@@ -995,7 +1005,7 @@ program
       }
       console.log('');
     } catch (err) {
-      console.error(chalk.red(`Failed to fetch logs: ${err instanceof Error ? err.message : String(err)}`));
+      console.error(chalk.red(`Failed to fetch logs: ${ConfigSanitizer.sanitizeText(err instanceof Error ? err.message : String(err))}`));
       process.exitCode = 1;
     } finally {
       await conn.close();
@@ -1010,11 +1020,11 @@ program
   .option('--cycle <interface>', 'Power cycle a PoE port (e.g. ether2)')
   .action(async (opts) => {
     const config = getDeviceConfig(opts.device);
-    const conn = new ConnectionManager(config);
+    const conn = new ConnectionManager(config, cliMutationOptions(config, opts.device));
     try {
       if (opts.cycle) {
         console.log(chalk.blue(`Power-cycling PoE on port ${opts.cycle}...`));
-        await conn.cyclePoePower(opts.cycle);
+        if (await reportMutation(conn.cyclePoePower(opts.cycle))) return;
         console.log(chalk.green(`✔ Successfully dispatched power-cycle to ${opts.cycle}.\n`));
       } else {
         const poe = await conn.getPoeStatus();
@@ -1034,7 +1044,7 @@ program
         console.log('');
       }
     } catch (err) {
-      console.error(chalk.red(`PoE operation failed: ${err instanceof Error ? err.message : String(err)}`));
+      console.error(chalk.red(`PoE operation failed: ${ConfigSanitizer.sanitizeText(err instanceof Error ? err.message : String(err))}`));
       process.exitCode = 1;
     } finally {
       await conn.close();
@@ -1053,16 +1063,16 @@ program
   .option('--download <rate>', 'Max download bandwidth (e.g. 100M)', '100M')
   .action(async (opts) => {
     const config = getDeviceConfig(opts.device);
-    const conn = new ConnectionManager(config);
+    const conn = new ConnectionManager(config, cliMutationOptions(config, opts.device));
     try {
       if (opts.cake) {
         console.log(chalk.blue(`Provisioning CAKE SQM queue '${opts.name}' (${opts.upload}/${opts.download}) for target ${opts.target}...`));
-        await conn.createCakeQueue({
+        if (await reportMutation(conn.createCakeQueue({
           name: opts.name,
           target: opts.target,
           upload: opts.upload,
           download: opts.download,
-        });
+        }))) return;
         console.log(chalk.green(`✔ Successfully configured CAKE Smart Queue Management on ${config.host}.\n`));
       } else {
         const queues = await conn.getQueues();
@@ -1081,7 +1091,7 @@ program
         console.log('');
       }
     } catch (err) {
-      console.error(chalk.red(`Queue operation failed: ${err instanceof Error ? err.message : String(err)}`));
+      console.error(chalk.red(`Queue operation failed: ${ConfigSanitizer.sanitizeText(err instanceof Error ? err.message : String(err))}`));
       process.exitCode = 1;
     } finally {
       await conn.close();
@@ -1095,7 +1105,7 @@ program
   .option('-d, --device <name>', 'Target router device from inventory')
   .action(async (opts) => {
     const config = getDeviceConfig(opts.device);
-    const conn = new ConnectionManager(config);
+    const conn = new ConnectionManager(config, cliMutationOptions(config, opts.device));
     try {
       const clients = await conn.getWirelessClients();
       console.log(chalk.cyan.bold(`\n=== Connected WiFi Clients (${clients.length} active) [${config.host}] ===\n`));
@@ -1112,7 +1122,7 @@ program
       }
       console.log('');
     } catch (err) {
-      console.error(chalk.red(`Failed to fetch wireless clients: ${err instanceof Error ? err.message : String(err)}`));
+      console.error(chalk.red(`Failed to fetch wireless clients: ${ConfigSanitizer.sanitizeText(err instanceof Error ? err.message : String(err))}`));
       process.exitCode = 1;
     } finally {
       await conn.close();
@@ -1190,13 +1200,14 @@ program
 program
   .command('tui [device]')
   .alias('ui')
+  .option('--offline', 'Open local linter and generators without connecting to a router')
   .description('Launch interactive Fullscreen Terminal User Interface (TUI) Dashboard & Wizards.')
   .option('-d, --device <name>', 'Target router device from inventory')
   .action(async (device, opts) => {
     try {
-      await runTui({ device: device || opts.device });
+      await runTui({ device: device || opts.device, offline: opts.offline });
     } catch (err) {
-      console.error(chalk.red(`TUI Error: ${err instanceof Error ? err.message : String(err)}`));
+      console.error(chalk.red(`TUI Error: ${ConfigSanitizer.sanitizeText(err instanceof Error ? err.message : String(err))}`));
       process.exitCode = 1;
     }
   });
@@ -1206,7 +1217,7 @@ program
 // 2. If run with a single argument matching a fleet router name -> launch TUI for that router!
 if (process.argv.length <= 2 && process.stdin.isTTY) {
   runTui().catch((err) => {
-    console.error(chalk.red(`TUI Error: ${err instanceof Error ? err.message : String(err)}`));
+    console.error(chalk.red(`TUI Error: ${ConfigSanitizer.sanitizeText(err instanceof Error ? err.message : String(err))}`));
     process.exit(1);
   });
 } else if (process.argv.length === 3 && process.stdin.isTTY) {
@@ -1223,7 +1234,7 @@ if (process.argv.length <= 2 && process.stdin.isTTY) {
     const fleetDev = getFleetDevice(candidate);
     if (fleetDev) {
       runTui({ device: candidate }).catch((err) => {
-        console.error(chalk.red(`TUI Error: ${err instanceof Error ? err.message : String(err)}`));
+        console.error(chalk.red(`TUI Error: ${ConfigSanitizer.sanitizeText(err instanceof Error ? err.message : String(err))}`));
         process.exit(1);
       });
     } else {

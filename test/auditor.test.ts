@@ -29,7 +29,7 @@ describe('SecurityAuditor', () => {
       getResource: async () => ({ version: '7.16', board: 'RB5009UG+S+IN' }),
       getDnsSettings: async () => ({ 'allow-remote-requests': true }),
       getFirewallFilters: async () => [
-        { chain: 'input', action: 'drop', protocol: 'udp', 'dst-port': '53' },
+        { chain: 'input', action: 'drop', protocol: 'udp', 'dst-port': '53', 'in-interface-list': 'WAN' },
       ],
       getIpServices: async () => [],
       getMangleRules: async () => [],

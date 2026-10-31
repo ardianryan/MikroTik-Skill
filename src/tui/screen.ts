@@ -16,6 +16,17 @@ export class TerminalScreen {
   private isAltScreen = false;
   private keyHandler: KeyPressHandler | null = null;
   private resizeHandlers: Array<(dim: ScreenDimensions) => void> = [];
+  private interruptHandler: (() => void) | null = null;
+  private previousRawMode = false;
+  private previouslyPaused = true;
+  private readonly resizeListener = () => {
+    for (const handler of this.resizeHandlers) handler(this.getDimensions());
+  };
+  private readonly keyListener = (ch: string | undefined, key?: Partial<Parameters<KeyPressHandler>[0]>) => {
+    const normalized = { name: key?.name || ch || '', ctrl: Boolean(key?.ctrl), shift: Boolean(key?.shift), meta: Boolean(key?.meta), sequence: key?.sequence || ch || '' };
+    if (normalized.ctrl && normalized.name === 'c') { this.handleCleanup(); return; }
+    this.keyHandler?.(normalized);
+  };
 
   constructor() {
     this.handleCleanup = this.handleCleanup.bind(this);
@@ -26,6 +37,9 @@ export class TerminalScreen {
    */
   public enter(): void {
     if (this.isAltScreen) return;
+    if (!process.stdin.isTTY || !process.stdout.isTTY) throw new Error('TUI requires an interactive terminal. Use CLI commands when piping output.');
+    this.previousRawMode = process.stdin.isRaw;
+    this.previouslyPaused = process.stdin.isPaused() || process.stdin.readableFlowing !== true;
     this.isAltScreen = true;
 
     // Enter alternate screen buffer & hide cursor
@@ -37,40 +51,16 @@ export class TerminalScreen {
     process.on('exit', this.handleCleanup);
 
     // Track window resize
-    process.stdout.on('resize', () => {
-      const dim = this.getDimensions();
-      for (const handler of this.resizeHandlers) {
-        handler(dim);
-      }
-    });
+    process.stdout.on('resize', this.resizeListener);
 
     // Configure readline raw mode for responsive keypress capture
-    if (process.stdin.isTTY) {
+    try {
       readline.emitKeypressEvents(process.stdin);
       process.stdin.setRawMode(true);
       process.stdin.resume();
 
-      process.stdin.on('keypress', (ch, key) => {
-        const rawKey = key || {};
-        const normalizedKey = {
-          name: rawKey.name || ch || rawKey.sequence || '',
-          ctrl: Boolean(rawKey.ctrl),
-          shift: Boolean(rawKey.shift),
-          meta: Boolean(rawKey.meta),
-          sequence: rawKey.sequence || ch || '',
-        };
-
-        // Global interrupt check (Ctrl+C)
-        if (normalizedKey.ctrl && normalizedKey.name === 'c') {
-          this.leave();
-          process.exit(0);
-        }
-
-        if (this.keyHandler) {
-          this.keyHandler(normalizedKey);
-        }
-      });
-    }
+      process.stdin.on('keypress', this.keyListener);
+    } catch (error) { this.leave(); throw error; }
   }
 
   /**
@@ -80,22 +70,28 @@ export class TerminalScreen {
     if (!this.isAltScreen) return;
     this.isAltScreen = false;
 
-    // Show cursor & exit alternate buffer
-    process.stdout.write('\x1b[?25h\x1b[?1049l');
-
-    if (process.stdin.isTTY && process.stdin.setRawMode) {
-      process.stdin.setRawMode(false);
-      process.stdin.pause();
+    try {
+      process.stdout.write('\x1b[?25h\x1b[?1049l');
+      if (process.stdin.isTTY && process.stdin.setRawMode) {
+        process.stdin.setRawMode(this.previousRawMode);
+        if (this.previouslyPaused) process.stdin.pause();
+      }
+    } finally {
+      process.stdin.removeListener('keypress', this.keyListener);
+      process.stdout.removeListener('resize', this.resizeListener);
+      this.resizeHandlers = [];
+      process.removeListener('SIGINT', this.handleCleanup);
+      process.removeListener('SIGTERM', this.handleCleanup);
+      process.removeListener('exit', this.handleCleanup);
     }
-
-    process.removeListener('SIGINT', this.handleCleanup);
-    process.removeListener('SIGTERM', this.handleCleanup);
-    process.removeListener('exit', this.handleCleanup);
   }
 
   private handleCleanup(): void {
     this.leave();
+    this.interruptHandler?.();
   }
+
+  public onInterrupt(handler: () => void): void { this.interruptHandler = handler; }
 
   public onKey(handler: KeyPressHandler): void {
     this.keyHandler = handler;
@@ -149,6 +145,11 @@ export class TerminalScreen {
       focused?: boolean;
     } = {}
   ): void {
+    const dimensions = this.getDimensions();
+    startRow = Math.max(1, Math.floor(startRow)); startCol = Math.max(1, Math.floor(startCol));
+    height = Math.min(Math.max(0, Math.floor(height)), dimensions.rows - startRow + 1);
+    width = Math.min(Math.max(0, Math.floor(width)), dimensions.cols - startCol + 1);
+    if (height < 2 || width < 4) return;
     const borderColor = options.borderColor || (options.focused ? chalk.cyan : chalk.gray);
     const titleColor = options.titleColor || (options.focused ? chalk.cyan.bold : chalk.white.bold);
 
@@ -156,8 +157,8 @@ export class TerminalScreen {
     this.moveTo(startRow, startCol);
     let topBorder = '╭─';
     if (options.title) {
-      const formattedTitle = ` ${options.title} `;
-      topBorder += titleColor(formattedTitle) + '─'.repeat(Math.max(0, width - 4 - stringWidth(formattedTitle)));
+      const formattedTitle = truncate(` ${options.title} `, width - 4);
+      topBorder += titleColor(formattedTitle) + '─'.repeat(Math.max(0, width - 3 - stringWidth(formattedTitle)));
     } else {
       topBorder += '─'.repeat(Math.max(0, width - 3));
     }

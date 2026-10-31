@@ -1,3 +1,4 @@
+import { ScriptSchema } from './validation.js';
 export interface MigrationRule {
   v6Command: string;
   v7Command: string;
@@ -16,6 +17,7 @@ export class RoutingMigrator {
    * Transpiles RouterOS v6 legacy routing filter commands into RouterOS v7 conditional rules.
    */
   static migrateScript(v6Script: string): RoutingMigrationResult {
+    v6Script = ScriptSchema.parse(v6Script);
     const lines = v6Script.split('\n');
     const migratedRules: MigrationRule[] = [];
     const warnings: string[] = [];

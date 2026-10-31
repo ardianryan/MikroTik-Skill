@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import { ConfigSanitizer } from '../safety/sanitizer.js';
 import https from 'node:https';
 import type { RouterConfig } from '../config/profile.js';
 import type {
@@ -20,15 +22,15 @@ import type {
 
 export class RouterOsRestClient {
   private config: RouterConfig;
-  private httpsAgent: https.Agent;
   private activeProtocol: 'https' | 'http';
   private activePort: number;
+  private pending = new Set<AbortController>();
+  private closed = false;
 
   constructor(config: RouterConfig) {
     this.config = config;
     this.activeProtocol = config.useSsl ? 'https' : 'http';
     this.activePort = config.restPort;
-    this.httpsAgent = new https.Agent({ rejectUnauthorized: false });
   }
 
   private getAuthHeader(): string {
@@ -37,6 +39,11 @@ export class RouterOsRestClient {
   }
 
   async request<T>(endpoint: string, method: string = 'GET', body?: unknown): Promise<T> {
+    if (this.closed) throw new Error('Router connection is closed');
+    const controller = new AbortController();
+    this.pending.add(controller);
+    const timeout = setTimeout(() => controller.abort(), 6000);
+    timeout.unref();
     const execute = async (protocol: 'https' | 'http', port: number): Promise<T> => {
       const url = `${protocol}://${this.config.host}:${port}/rest${endpoint}`;
       const headers: Record<string, string> = {
@@ -46,16 +53,35 @@ export class RouterOsRestClient {
 
       const options: RequestInit = {
         method,
+        redirect: 'error',
         headers,
-        signal: AbortSignal.timeout(6000),
+        signal: controller.signal,
       };
 
       if (body && ['POST', 'PUT', 'PATCH'].includes(method)) {
         options.body = JSON.stringify(body);
       }
 
-      if (protocol === 'https') {
-        (options as RequestInit & { agent?: https.Agent }).agent = this.httpsAgent;
+      if (protocol === 'https' && this.config.caFile) {
+        return new Promise<T>((resolve, reject) => {
+          const request = https.request(url, { method, headers, signal: controller.signal, ca: fs.readFileSync(this.config.caFile!), rejectUnauthorized: true }, (response) => {
+            const chunks: Buffer[] = [];
+            let size = 0;
+            response.on('data', (chunk: Buffer) => { size += chunk.length; if (size > 4 * 1024 * 1024) response.destroy(new Error('Router response exceeds limit')); else chunks.push(chunk); });
+            response.on('error', reject);
+            response.on('end', () => {
+              if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) { reject(new Error(`RouterOS REST Error (${response.statusCode})`)); return; }
+              try {
+                const text = Buffer.concat(chunks).toString('utf8');
+                resolve((response.headers['content-type']?.includes('application/json') ? JSON.parse(text) : text) as T);
+              } catch { reject(new Error('Invalid router response')); }
+            });
+          });
+          request.setTimeout(6000, () => request.destroy(new Error('Router request timed out')));
+          request.on('error', reject);
+          if (options.body) request.write(options.body);
+          request.end();
+        });
       }
 
       const response = await fetch(url, options);
@@ -65,7 +91,7 @@ export class RouterOsRestClient {
           throw new Error('401 Unauthorized: Invalid Username or Password');
         }
         const errorText = await response.text();
-        throw new Error(`RouterOS REST Error (${response.status}): ${errorText}`);
+        throw new Error(`RouterOS REST Error (${response.status}): ${ConfigSanitizer.sanitizeText(errorText)}`);
       }
 
       const contentType = response.headers.get('content-type') || '';
@@ -78,21 +104,15 @@ export class RouterOsRestClient {
     };
 
     try {
+      if (!/^\/[a-zA-Z0-9_/*?.=,&%:-]*$/.test(endpoint) || endpoint.includes('..') || /%2e|%2f|%5c/i.test(endpoint)) throw new Error('Invalid RouterOS endpoint');
       return await execute(this.activeProtocol, this.activePort);
-    } catch (primaryErr) {
-      if (this.activeProtocol === 'https' && (this.activePort === 443 || this.activePort === 8443)) {
-        try {
-          const fallbackPort = 80;
-          const result = await execute('http', fallbackPort);
-          this.activeProtocol = 'http';
-          this.activePort = fallbackPort;
-          return result;
-        } catch {
-          throw primaryErr;
-        }
-      }
-      throw primaryErr;
-    }
+    } finally { clearTimeout(timeout); this.pending.delete(controller); }
+  }
+
+  close(): void {
+    this.closed = true;
+    for (const controller of this.pending) controller.abort();
+    this.pending.clear();
   }
 
   async getResource(): Promise<SystemResource> {
@@ -151,16 +171,25 @@ export class RouterOsRestClient {
     return this.request<InterfaceItem[]>('/interface');
   }
 
-  async addScheduler(name: string, interval: string, onEvent: string): Promise<unknown> {
+  async getClock(): Promise<{ date: string; time: string }> {
+    return this.request('/system/clock');
+  }
+
+  async addScheduler(name: string, interval: string, onEvent: string, start: { 'start-date': string; 'start-time': string }): Promise<unknown> {
     return this.request('/system/scheduler', 'PUT', {
       name,
       interval,
       'on-event': onEvent,
+      ...start,
     });
   }
 
   async removeScheduler(id: string): Promise<unknown> {
     return this.request(`/system/scheduler/${id}`, 'DELETE');
+  }
+
+  async getSchedulers(): Promise<Array<{ '.id'?: string; name: string; 'on-event'?: string; disabled?: string | boolean }>> {
+    return this.request('/system/scheduler');
   }
 
   async getContainers(): Promise<ContainerItem[]> {
@@ -176,7 +205,7 @@ export class RouterOsRestClient {
     return this.request<AdlistItem[]>('/ip/dns/adlist');
   }
 
-  async addDnsAdlist(url: string, sslVerify: boolean = false): Promise<unknown> {
+  async addDnsAdlist(url: string, sslVerify: boolean = true): Promise<unknown> {
     return this.request('/ip/dns/adlist', 'PUT', {
       url,
       'ssl-verify': sslVerify ? 'yes' : 'no',
@@ -235,15 +264,11 @@ export class RouterOsRestClient {
   }
 
   async getWebServerSettings(): Promise<WebServerSettings | null> {
-    try {
-      const res = await this.request<WebServerSettings | WebServerSettings[]>('/ip/service/webserver');
+    const res = await this.request<WebServerSettings | WebServerSettings[]>('/ip/service/webserver');
       if (Array.isArray(res)) {
         return res[0] ?? null;
       }
       return res ?? null;
-    } catch {
-      return null;
-    }
   }
 }
 

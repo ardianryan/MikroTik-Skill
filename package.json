@@ -53,13 +53,13 @@
     "cake-qos"
   ],
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.6.1",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "chalk": "^5.4.1",
     "commander": "^13.1.0",
     "dotenv": "^16.4.7",
     "node-routeros": "^1.6.9",
     "qrcode": "^1.5.4",
-    "zod": "^3.24.2"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^26.6.1",
