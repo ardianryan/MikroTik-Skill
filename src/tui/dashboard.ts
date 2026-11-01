@@ -142,7 +142,7 @@ export class TuiDashboard {
     this.targetName = this.offline ? 'Offline tools' : options.device || this.routerConfig.host;
     this.currentView = options.device || this.offline ? 'dashboard' : 'gateway';
     if (this.offline) this.connectionStatus = 'offline';
-    this.gatewayMode = this.fleetStore.devices.length === 0 ? 'add' : 'select';
+    this.gatewayMode = 'select';
 
   }
 
@@ -502,7 +502,7 @@ export class TuiDashboard {
         this.auditFindings = [];
         this.isAuditing = false;
         this.currentView = 'gateway';
-        this.gatewayMode = this.fleetStore.devices.length === 0 ? 'add' : 'select';
+        this.gatewayMode = 'select';
         this.gatewayError = null;
         this.render();
         return;
