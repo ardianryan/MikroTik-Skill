@@ -77,6 +77,33 @@ async function reportMutation(result: Promise<unknown>): Promise<boolean> {
 }
 
 program
+  .command('login')
+  .description('Verify credentials and test connection to the active router.')
+  .action(async () => {
+    const config = getDeviceConfig();
+    const safeCfg = sanitizeConfig(config);
+    console.log(chalk.blue(`Authenticating to: ${safeCfg.host} (User: ${safeCfg.user})...`));
+
+    const conn = new ConnectionManager(config, cliMutationOptions(config));
+    try {
+      const result = await conn.testConnection();
+      if (result.successful) {
+        console.log(chalk.green('✓ Authentication successful!'));
+        console.log(`  Transport : ${chalk.bold(result.transport.toUpperCase())} (Port ${result.port})`);
+        console.log(`  RouterOS  : ${result.routerOsVersion || 'v7.x'}`);
+        console.log(`  Hardware  : ${result.boardModel || 'Unknown'}`);
+        console.log(`  Uptime    : ${result.uptime || 'Unknown'}`);
+        console.log(`  Latency   : ${result.latencyMs} ms`);
+      } else {
+        console.error(chalk.red(`✗ Authentication failed: ${result.error || 'Unknown error'}`));
+        process.exitCode = 1;
+      }
+    } finally {
+      await conn.close();
+    }
+  });
+
+program
   .command('test')
   .description('Test connectivity and transport detection (REST API vs Native API Port 8728).')
   .action(async () => {

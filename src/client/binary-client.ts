@@ -23,6 +23,7 @@ export class RouterOsBinaryClient {
   private config: RouterConfig;
   private api: RouterOSAPI | null = null;
   private isConnected = false;
+  private connectingPromise: Promise<void> | null = null;
 
   constructor(config: RouterConfig) {
     this.config = config;
@@ -32,19 +33,31 @@ export class RouterOsBinaryClient {
     if (this.isConnected && this.api) {
       return;
     }
+    if (this.connectingPromise) {
+      return this.connectingPromise;
+    }
 
-    const port = this.config.useSsl ? this.config.apiSslPort : this.config.apiPort;
-    this.api = new RouterOSAPI({
-      host: this.config.host,
-      user: this.config.user,
-      password: this.config.password,
-      port,
-      tls: this.config.useSsl ? { rejectUnauthorized: true, ...(this.config.caFile ? { ca: fs.readFileSync(this.config.caFile) } : {}) } : undefined,
-      timeout: 10,
-    });
+    this.connectingPromise = (async () => {
+      const port = this.config.useSsl ? this.config.apiSslPort : this.config.apiPort;
+      const api = new RouterOSAPI({
+        host: this.config.host,
+        user: this.config.user,
+        password: this.config.password,
+        port,
+        tls: this.config.useSsl ? { rejectUnauthorized: true, ...(this.config.caFile ? { ca: fs.readFileSync(this.config.caFile) } : {}) } : undefined,
+        timeout: 10,
+      });
 
-    await this.api.connect();
-    this.isConnected = true;
+      try {
+        await api.connect();
+        this.api = api;
+        this.isConnected = true;
+      } finally {
+        this.connectingPromise = null;
+      }
+    })();
+
+    return this.connectingPromise;
   }
 
   async close(): Promise<void> {
