@@ -215,7 +215,7 @@ export function handleGatewayKey(
 
 export function renderAttributionFooter(screen: TerminalScreen, rows: number, cols: number): void {
   screen.moveTo(rows, 1);
-  const brand = chalk.gray(' MikroTik NetDevOps Suite v1.3.0');
+  const brand = chalk.gray(' MikroTik NetDevOps Suite v1.4.0');
   const authorLink = terminalLink('Ardian Ryan', 'https://github.com/ardianryan');
   const authorFull = `${chalk.gray('Engineered by ')}${chalk.cyan.bold(authorLink)}${chalk.gray(' (https://github.com/ardianryan) ')}`;
   const authorCompact = `${chalk.gray('Engineered by ')}${chalk.cyan.bold(authorLink)} `;

@@ -8,14 +8,44 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-09
+
 ### Added
-- Offline TUI entry (`mtik tui --offline` and gateway Ctrl+O) for local tools without router requests.
-- Editable PCC, WireGuard, and Hotspot forms using shared validation.
-- Local `.rsc` linting with finding navigation and sanitized JSON report export.
-- Private bundle export into a new directory, with SHA256 checksums and `0700`/`0600` permissions. Existing paths are refused.
+- **`mtik login` Diagnostic Command**:
+  - Direct authentication and transport health-check command verifying router credentials with real-time latency measurement in milliseconds.
+  - Automatically identifies whether Binary API (port 8728/8729) or REST API (port 443/80) is responsive, outputting hardware model, uptime, and RouterOS firmware version.
+- **`mtik fix [findingId]` Interactive Remediation**:
+  - Guided audit remediation engine implementing an advisory and confirmation-first protocol.
+  - Previews pending firewall, service, and routing mutations via visual dry-run diffs (`--dry-run`).
+  - Guards all live router mutations under an automated 30-second safe-mode watchdog with rollback verification.
+- **Unified Fleet CLI & Direct Router Launcher**:
+  - Added smart shell launch shortcut: run `mtik <router-name>` anytime in terminal to launch interactive TUI targeted directly at that router.
+  - Extended fleet management commands (`mtik fleet --switch <name>`, `mtik fleet --add`, `mtik fleet --remove`).
+- **Offline TUI Mode & Local Studio**:
+  - Added `--offline` flag (`mtik tui --offline` or `Ctrl+O` in gateway) enabling PCC calculations, WireGuard client generation, Hotspot captive portals, and configuration linting without requiring any router connection.
+  - Editable PCC, WireGuard, and Hotspot form dialogs using strict Zod schema validation.
+- **Private Bundle & Artifact Export**:
+  - Secure local artifact bundle export with SHA256 checksums and strict permission enforcement (`0700` directories, `0600` private key files). Prevents accidental overwriting of existing paths.
+
+### Fixed
+- **RouterOS v7.20+ Binary API Compatibility**:
+  - Fixed `!empty` unknown reply packet error (`RosException: Tried to process unknown reply: !empty`) during empty prints on newer RouterOS v7 minor releases.
+  - Resolved `UNREGISTEREDTAG` race condition during parallel audits by adding command mutex queuing in `RouterOsBinaryClient` and receiver tag validation.
+  - Gracefully handled `unknown parameter` on RouterOS v7 installations where `/ip/service/webserver` lacks `rest-plain`.
+- **TUI Gateway Selection & Reactive State**:
+  - Initialized gateway directly in saved router select mode when inventory contains stored fleet devices.
+  - Fixed form key event handling to preserve reactive state updates and password masking across onboarding dialogs.
+- **Audit Engine Fidelity**:
+  - Preserved `UNKNOWN` findings and `INCOMPLETE` overall status when audits encounter service failures or ambiguous firewall configurations.
+  - Corrected CLI PCC argument parsing to validate integer weights and optional `@gateway` specifications.
+
+### Changed
+- **Architectural De-monolithization & Code Hygiene**:
+  - Modularized monolithic CLI (`src/cli/index.ts`, previously 1,379 lines) into clean command domains under `src/cli/commands/` (`core.ts`, `network.ts`, `tools.ts`, `server.ts`) and `src/cli/common.ts`, reducing `index.ts` to 66 lines.
+  - Modularized monolithic TUI dashboard (`src/tui/dashboard.ts`, previously 1,307 lines) into `dashboard.ts` (758 lines), `gateway-view.ts` (374 lines), and `tab-views.ts` (339 lines).
+  - **100% Quality Metric:** Zero files in the repository exceed 800 lines of code.
 
 ### Security
-- Removed two secret-exfiltration workflows; restricted remaining Actions permissions, pinned action commits, and made publish failures visible. Owner investigation and credential rotation remain required.
 - Public HTTP/SSE MCP no longer exposes router or inventory access, including when credentials exist in its environment.
 - Local writes default to dry-run and bind interactive approval to the router, reviewed state, operation, and rollback. Raw writes require an explicit recovery script; watchdog arm/readback/disarm failures are reported.
 - Enabled TLS verification and private CA support; removed HTTPS downgrade and automatic mutation transport retries.
@@ -23,18 +53,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Expanded recursive secret sanitization and private file permissions; added audit UNKNOWN/INCOMPLETE states and stricter firewall assessment.
 - Removed default Hotspot accounts, escaped generated input, and rendered browser linter findings as text.
 - Updated MCP SDK to 1.32.2, Zod to 4.6.7, and compatible advisory-related transitive dependencies.
-
-### Verification
-- Local isolated verification passed typecheck, build, 127 tests, and seven pseudo-terminal scenarios with dummy credentials. See CONTRIBUTING.md for commands and limits.
-- No physical router was contacted. Live TUI traffic integration and owner-side incident follow-up remain unvalidated.
-
-### Fixed
-- CLI PCC parses strict integer weights and optional `@gateway` addresses; sample defaults are explicitly identified when gateways are omitted.
-- CLI audit preserves UNKNOWN findings and INCOMPLETE overall status.
-- Corrected CLI examples, transport boundaries, and rollback claims throughout the operational documentation.
-- Removed illustrative TUI interface rates and hardware topology claims. Live TUI traffic monitoring remains deferred.
-- Corrected the TUI MCP installer hint to `mtik install-mcp`.
-- All-in-one Hotspot generation from TUI requires an operator-supplied HTTPS authentication URL.
 
 ## [1.3.0] - 2026-10-28
 

@@ -22,7 +22,7 @@ describe('MikroTikHttpServer (Pure Knowledge Engine)', () => {
     assert.equal(res.status, 200);
     const data = (await res.json()) as { name: string; version: string; mode: string; mcp?: { sse: string; streamableHttp: string } };
     assert.equal(data.name, 'mikrotik-skill');
-    assert.equal(data.version, '1.3.0');
+    assert.equal(data.version, '1.4.0');
     assert.equal(data.mode, 'knowledge-and-intelligence');
     assert.ok(data.mcp?.sse.includes('/sse'));
     assert.ok(data.mcp?.streamableHttp.includes('/mcp'));

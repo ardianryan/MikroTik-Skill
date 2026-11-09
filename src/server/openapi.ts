@@ -6,7 +6,7 @@ export class OpenApiGenerator {
       info: {
         title: 'MikroTik RouterOS v7 Certified Knowledge & Intelligence API',
         description: 'Zero-credential certified knowledge engine for MikroTik RouterOS v7. Provides 10-track certification runbooks, template generation, mangle order validation, configuration sanitization, and system prompt intelligence for ChatGPT & Claude.',
-        version: '1.3.0',
+        version: '1.4.0',
       },
       servers: [
         {

@@ -132,7 +132,7 @@ export class MikroTikHttpServer {
     if ((pathname === '/' || pathname === '/api' || pathname === '/api/') && method === 'GET') {
       this.sendJson(res, 200, {
         name: 'mikrotik-skill',
-        version: '1.3.0',
+        version: '1.4.0',
         mode: 'knowledge-and-intelligence',
         description: 'MikroTik RouterOS v7 Certified Knowledge, Remote MCP & OpenAPI Gateway. Zero router credentials required.',
         mcp: {

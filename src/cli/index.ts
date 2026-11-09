@@ -19,7 +19,7 @@ program.hook('preAction', (_command, action) => {
 program
   .name('mtik')
   .description('MikroTik RouterOS v7 Production Automation & Management CLI')
-  .version('1.3.0')
+  .version('1.4.0')
   .option('-d, --device <name>', 'Target specific router from fleet inventory or profile')
   .option('--apply', 'Apply after interactive review', false)
   .option('--reason <text>', 'Reason for a manual mutation')

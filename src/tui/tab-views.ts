@@ -47,7 +47,7 @@ export function renderHeader(
   boardModel: string,
   routerOsVersion: string
 ): void {
-  const title = ' MikroTik NetDevOps Suite v1.3.0 ';
+  const title = ' MikroTik NetDevOps Suite v1.4.0 ';
   const connBadge =
     connectionStatus === 'connected'
       ? chalk.bgGreen.black(' ONLINE ')

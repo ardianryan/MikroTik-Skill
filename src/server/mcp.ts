@@ -18,7 +18,7 @@ export function createRemoteMcpServer(): Server {
   const server = new Server(
     {
       name: 'mikrotik-skill',
-      version: '1.3.0',
+      version: '1.4.0',
     },
     {
       capabilities: {
