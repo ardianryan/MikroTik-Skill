@@ -6,9 +6,27 @@ import { exportLocalArtifacts, lintLocalFile, lintReport, type LocalArtifact } f
 import type { LintResult } from '../safety/linter.js';
 import { z } from 'zod';
 import { TerminalScreen } from './screen.js';
-import { truncate, padRight, renderGauge, formatBytes, stringWidth, center, terminalLink } from './utils.js';
+import { truncate } from './utils.js';
+import { renderGatewayView, handleGatewayKey, type AddRouterForm, type GatewayRenderContext } from './gateway-view.js';
+import {
+  renderHeader,
+  renderNavigation,
+  renderFooter,
+  renderTelemetryContent,
+  renderAuditContent,
+  renderPccContent,
+  renderWireguardContent,
+  renderHotspotContent,
+  renderMonitorContent,
+  renderFleetContent,
+  renderLinterContent,
+  renderProfilesContent,
+  NAV_ITEMS,
+  type TuiTab,
+  type TabViewsContext,
+} from './tab-views.js';
 import { ConnectionManager } from '../client/connection-manager.js';
-import { sanitizeConfig, listProfiles, getDeviceConfig, loadRouterConfig, RouterConfigSchema, type RouterConfig } from '../config/profile.js';
+import { sanitizeConfig, getDeviceConfig, loadRouterConfig, RouterConfigSchema, type RouterConfig } from '../config/profile.js';
 import {
   getFleetStore,
   addFleetDevice,
@@ -28,45 +46,6 @@ export interface TuiDashboardOptions {
   device?: string;
   offline?: boolean;
   screen?: TerminalScreen;
-}
-
-export type TuiTab =
-  | 'telemetry'
-  | 'audit'
-  | 'pcc'
-  | 'wireguard'
-  | 'hotspot'
-  | 'monitor'
-  | 'fleet'
-  | 'linter'
-  | 'profiles';
-
-interface NavItem {
-  id: TuiTab;
-  title: string;
-  icon: string;
-}
-
-const NAV_ITEMS: NavItem[] = [
-  { id: 'telemetry', title: 'System Telemetry', icon: '📊' },
-  { id: 'audit', title: '10-Pillar Audit', icon: '🛡️' },
-  { id: 'pcc', title: 'Multi-WAN PCC', icon: '🔀' },
-  { id: 'wireguard', title: 'WireGuard Studio', icon: '🔑' },
-  { id: 'hotspot', title: 'Hotspot Studio', icon: '📶' },
-  { id: 'monitor', title: 'Traffic Monitor', icon: '📈' },
-  { id: 'fleet', title: 'Fleet & Multi-Router', icon: '🖧' },
-  { id: 'linter', title: 'Config Linter', icon: '🔍' },
-  { id: 'profiles', title: 'Profiles & MCP', icon: '⚙️' },
-];
-
-interface AddRouterForm {
-  name: string;
-  host: string;
-  port: string;
-  user: string;
-  password: string;
-  model: string;
-  preferBinary: boolean;
 }
 
 /**
@@ -298,181 +277,28 @@ export class TuiDashboard {
   }
 
   private handleGatewayKey(key: { name: string; sequence: string; ctrl?: boolean; shift?: boolean }): void {
-    if (key.ctrl && key.name === 'q') { this.stop(); return; }
-    if (this.isConnecting) return;
-
-    const keyName = key.name || '';
-    const devices = this.fleetStore.devices;
-
-    if (this.gatewayMode === 'select') {
-      if (keyName === 'q') {
-        this.stop();
-        return;
-      }
-
-      // Select previous device
-      if (keyName === 'up' || keyName === 'k') {
-        if (devices.length > 0) {
-          this.selectedFleetIndex = (this.selectedFleetIndex - 1 + devices.length) % devices.length;
-          this.gatewayError = null;
-          this.render();
-        }
-        return;
-      }
-
-      // Select next device
-      if (keyName === 'down' || keyName === 'j') {
-        if (devices.length > 0) {
-          this.selectedFleetIndex = (this.selectedFleetIndex + 1) % devices.length;
-          this.gatewayError = null;
-          this.render();
-        }
-        return;
-      }
-
-      // Connect to selected device
-      if (keyName === 'return' || keyName === 'enter' || keyName === 'space') {
-        const targetDev = devices[this.selectedFleetIndex];
-        if (targetDev) {
-          this.runAction(() => this.attemptConnectDevice(targetDev));
-        }
-        return;
-      }
-
-      // Switch to Add Router mode
-      if (keyName === 'a' || keyName === 'n' || keyName === '2') {
-        this.gatewayMode = 'add';
-        this.gatewayError = null;
-        this.addRouterField = 0;
-        this.addRouterForm = {
-          name: `router-${(devices.length + 1).toString()}`,
-          host: '192.168.88.1',
-          port: '443',
-          user: 'admin',
-          password: '',
-          model: 'E60iUGS',
-          preferBinary: false,
-        };
-        this.render();
-        return;
-      }
-
-      // Delete device from fleet
-      if (keyName === 'd') {
-        const targetDev = devices[this.selectedFleetIndex];
-        if (targetDev && devices.length > 0) {
-          removeFleetDevice(targetDev.name);
-          this.fleetStore = getFleetStore();
-          this.selectedFleetIndex = Math.max(0, this.selectedFleetIndex - 1);
-          if (this.fleetStore.devices.length === 0) {
-            this.gatewayMode = 'add';
-          }
-          this.render();
-        }
-        return;
-      }
-    } else if (this.gatewayMode === 'add') {
-      // Escape returns to select mode if devices exist
-      if (keyName === 'escape') {
-        if (devices.length === 0) { this.stop(); return; }
-        if (devices.length > 0) {
-          this.gatewayMode = 'select';
-          this.gatewayError = null;
-          this.render();
-        }
-        return;
-      }
-
-      // Key '1' switches to select mode
-      if (keyName === '1' && (this.addRouterField === 0 || key.ctrl)) {
-        if (devices.length > 0) {
-          this.gatewayMode = 'select';
-          this.gatewayError = null;
-          this.render();
-          return;
-        }
-      }
-
-      const fieldKeys: Array<keyof AddRouterForm> = [
-        'name',
-        'host',
-        'preferBinary',
-        'port',
-        'user',
-        'password',
-        'model',
-      ];
-      const currentKey = fieldKeys[this.addRouterField] || 'name';
-
-      // Toggle Protocol on space
-      if (currentKey === 'preferBinary') {
-        if (keyName === 'space' || keyName === 'left' || keyName === 'right') {
-          this.addRouterForm.preferBinary = !this.addRouterForm.preferBinary;
-          this.addRouterForm.port = this.addRouterForm.preferBinary ? '8729' : '443';
-          this.render();
-          return;
-        }
-      }
-
-      // Enter key
-      if (keyName === 'return' || keyName === 'enter') {
-        if (this.addRouterField < fieldKeys.length - 1) {
-          this.addRouterField++;
-          this.render();
-        } else {
-          // Submit form
-          this.runAction(() => this.submitAddRouterForm());
-        }
-        return;
-      }
-
-      // Up navigation
-      if (keyName === 'up' && this.addRouterField > 0) {
-        this.addRouterField--;
-        this.render();
-        return;
-      }
-
-      // Down navigation
-      if (keyName === 'down' && this.addRouterField < fieldKeys.length - 1) {
-        this.addRouterField++;
-        this.render();
-        return;
-      }
-
-      // Tab navigation
-      if (keyName === 'tab') {
-        if (key.shift || key.sequence === '\x1b[Z') {
-          this.addRouterField = (this.addRouterField - 1 + fieldKeys.length) % fieldKeys.length;
-        } else {
-          this.addRouterField = (this.addRouterField + 1) % fieldKeys.length;
-        }
-        this.render();
-        return;
-      }
-
-      // Backspace
-      if (keyName === 'backspace' && currentKey !== 'preferBinary') {
-        const val = this.addRouterForm[currentKey];
-        this.addRouterForm[currentKey] = [...val].slice(0, -1).join('');
-        this.render();
-        return;
-      }
-
-      // Printable character typing
-      if (
-        currentKey !== 'preferBinary' &&
-        key.sequence &&
-        key.sequence.length === 1 &&
-                keyName !== 'tab' &&
-        keyName !== 'enter' &&
-        keyName !== 'return' &&
-        keyName !== 'escape'
-      ) {
-        if (!key.ctrl && !/[\x00-\x1f\x7f-\x9f]/.test(key.sequence) && this.addRouterForm[currentKey].length < 256) this.addRouterForm[currentKey] += key.sequence;
-        this.render();
-      }
-    }
+    const self = this;
+    handleGatewayKey({
+      get gatewayMode() { return self.gatewayMode; },
+      set gatewayMode(v) { self.gatewayMode = v; },
+      get fleetStore() { return self.fleetStore; },
+      set fleetStore(v) { self.fleetStore = v; },
+      get selectedFleetIndex() { return self.selectedFleetIndex; },
+      set selectedFleetIndex(v) { self.selectedFleetIndex = v; },
+      get gatewayError() { return self.gatewayError; },
+      set gatewayError(v) { self.gatewayError = v; },
+      get addRouterField() { return self.addRouterField; },
+      set addRouterField(v) { self.addRouterField = v; },
+      get addRouterForm() { return self.addRouterForm; },
+      set addRouterForm(v) { self.addRouterForm = v; },
+      get isConnecting() { return self.isConnecting; },
+      set isConnecting(v) { self.isConnecting = v; },
+      stop: () => self.stop(),
+      render: () => self.render(),
+      runAction: (action) => self.runAction(action),
+      attemptConnectDevice: (dev) => self.attemptConnectDevice(dev),
+      submitAddRouterForm: () => self.submitAddRouterForm(),
+    }, key);
   }
 
   private setupKeyBindings(): void {
@@ -815,6 +641,43 @@ export class TuiDashboard {
   /**
    * Render complete dashboard frame.
    */
+  private getGatewayContext(): GatewayRenderContext {
+    return {
+      gatewayMode: this.gatewayMode,
+      fleetStore: this.fleetStore,
+      selectedFleetIndex: this.selectedFleetIndex,
+      isConnecting: this.isConnecting,
+      connectingTargetName: this.connectingTargetName,
+      gatewayError: this.gatewayError,
+      addRouterForm: this.addRouterForm,
+      addRouterField: this.addRouterField,
+    };
+  }
+
+  private getTabContext(): TabViewsContext {
+    return {
+      offline: this.offline,
+      cpuLoad: this.cpuLoad,
+      totalMemory: this.totalMemory,
+      freeMemory: this.freeMemory,
+      boardModel: this.boardModel,
+      routerOsVersion: this.routerOsVersion,
+      uptime: this.uptime,
+      isAuditing: this.isAuditing,
+      auditFindings: this.auditFindings,
+      wizardResult: this.wizardResult,
+      wireguardResult: this.wireguardResult,
+      wizardData: this.wizardData,
+      wizardMode: this.wizardMode,
+      fleetStore: this.fleetStore,
+      selectedFleetIndex: this.selectedFleetIndex,
+      addRouterForm: this.addRouterForm,
+      addRouterField: this.addRouterField,
+      lintResult: this.lintResult,
+      lintIndex: this.lintIndex,
+    };
+  }
+
   public render(): void {
     if (!this.isRunning) return;
     const { rows, cols } = this.screen.getDimensions();
@@ -822,7 +685,7 @@ export class TuiDashboard {
     if (cols < 60 || rows < 24) { this.screen.write(truncate('Terminal too small: use at least 60 columns and 24 rows. Ctrl+C exits.', cols)); return; }
 
     if (this.currentView === 'gateway') {
-      this.renderGateway(rows, cols);
+      renderGatewayView(this.screen, this.getGatewayContext(), rows, cols);
       return;
     }
 
@@ -831,197 +694,18 @@ export class TuiDashboard {
     const contentWidth = cols - navWidth - 3;
     const mainHeight = rows - 5;
 
-    // 1. Render Top Header
-    this.renderHeader(cols, safeCfg.host);
-
-    // 2. Render Left Sidebar Navigation
-    this.renderNavigation(navWidth, mainHeight);
-
-    // 3. Render Main Content Area
+    renderHeader(
+      this.screen,
+      cols,
+      safeCfg.host,
+      this.connectionStatus,
+      this.targetName,
+      this.boardModel,
+      this.routerOsVersion
+    );
+    renderNavigation(this.screen, navWidth, mainHeight, this.selectedNavIndex, this.focus === 'nav');
     this.renderMainContent(navWidth + 3, mainHeight, contentWidth);
-
-    // 4. Render Bottom Status Footer
-    this.renderFooter(rows, cols);
-  }
-
-  private renderGateway(rows: number, cols: number): void {
-    const boxWidth = Math.min(84, Math.max(50, cols - 4));
-    const boxHeight = Math.min(24, Math.max(16, rows - 2));
-    const startRow = Math.max(2, Math.floor((rows - boxHeight) / 2));
-    const startCol = Math.max(2, Math.floor((cols - boxWidth) / 2));
-
-    const lines: string[] = [];
-
-    // Header title
-    const bannerTitle = ' MIKROTIK NETDEVOPS SUITE • ROUTER GATEWAY & LOGIN ';
-    lines.push(chalk.bold.cyan(bannerTitle));
-    lines.push(chalk.gray('[Ctrl+O] Offline linter & generators (no router needed)'));
-
-    // Mode tabs
-    const isSelect = this.gatewayMode === 'select';
-    const tab1 = isSelect
-      ? chalk.bgCyan.black.bold(' [1] SELECT SAVED ROUTER ')
-      : chalk.white(' [1] Select Saved Router ');
-    const tab2 = !isSelect
-      ? chalk.bgCyan.black.bold(' [2] + ADD NEW ROUTER ')
-      : chalk.white(' [2] + Add New Router ');
-    lines.push(`${tab1}   ${tab2}`);
-    lines.push('');
-
-    if (this.gatewayMode === 'select') {
-      lines.push(chalk.bold.white('REGISTERED FLEET ROUTERS:'));
-      lines.push(chalk.gray('Select a router and press [Enter] to authenticate and open the dashboard.'));
-      lines.push('');
-
-      const devices = this.fleetStore.devices;
-      if (devices.length === 0) {
-        lines.push(chalk.yellow('  (No routers stored yet. Press [A] or [2] to add a new router)'));
-        lines.push('');
-      } else {
-        devices.forEach((dev, idx) => {
-          const isSelected = idx === this.selectedFleetIndex;
-          const arrow = isSelected ? chalk.cyan.bold(' ▶ ') : '   ';
-          const namePart = padRight(dev.name, 16);
-          const hostPart = padRight(`${dev.host}:${dev.port}`, 18);
-          const userPart = padRight(dev.user, 10);
-          const typePart = padRight(dev.preferBinary ? 'API (8728)' : 'REST (443/80)', 14);
-          const modelPart = chalk.gray(`[${dev.model || 'MikroTik'}]`);
-
-          const lineContent = `${arrow}${namePart} ${hostPart} ${userPart} ${typePart} ${modelPart}`;
-          if (isSelected) {
-            lines.push(chalk.bgCyan.black(padRight(lineContent, boxWidth - 6)));
-          } else {
-            lines.push(chalk.white(lineContent));
-          }
-        });
-      }
-
-      // Connecting state or error message
-      lines.push('');
-      if (this.isConnecting) {
-        lines.push(chalk.bgYellow.black(` ⏳ Connecting & authenticating to ${this.connectingTargetName}... Please wait. `));
-      } else if (this.gatewayError) {
-        lines.push(chalk.bgRed.white(` ${this.gatewayError} `));
-      } else {
-        lines.push('');
-      }
-
-      // Bottom instruction
-      lines.push('');
-      lines.push(chalk.gray('─'.repeat(boxWidth - 4)));
-      lines.push(
-        chalk.gray(
-          `${chalk.cyan('[↑/↓]')} Select  ${chalk.green('[Enter]')} Login & Launch Dashboard  ${chalk.yellow('[A]')} Add  ${chalk.red('[D]')} Delete  ${chalk.magenta('[Ctrl+Q]')} Quit`
-        )
-      );
-    } else {
-      // Add Router Form
-      lines.push(chalk.bold.white('ONBOARDING: ENTER ROUTER CREDENTIALS:'));
-      lines.push(chalk.gray('Fill in router details. Press [Enter] to proceed to the next field or submit.'));
-      lines.push('');
-
-      const fields: Array<{ label: string; value: string; hint?: string }> = [
-        { label: 'Router Name', value: this.addRouterForm.name || chalk.gray('(e.g. core-router)') },
-        { label: 'Host / IP', value: this.addRouterForm.host || chalk.gray('(e.g. 192.168.88.1)') },
-        {
-          label: 'Protocol / Mode',
-          value: this.addRouterForm.preferBinary
-            ? chalk.cyan.bold('Binary API Port 8728 (Native, No SSL)')
-            : chalk.cyan.bold('REST API Port 443/80 (HTTPS/HTTP)'),
-          hint: chalk.yellow('[Space to toggle]'),
-        },
-        { label: 'Port', value: this.addRouterForm.port },
-        { label: 'Username', value: this.addRouterForm.user },
-        {
-          label: 'Password',
-          value: this.addRouterForm.password
-            ? '•'.repeat(this.addRouterForm.password.length)
-            : chalk.gray('(leave empty if no password)'),
-        },
-        { label: 'Hardware Model', value: this.addRouterForm.model },
-      ];
-
-      fields.forEach((f, idx) => {
-        const isCurrent = idx === this.addRouterField;
-        const pointer = isCurrent ? chalk.cyan.bold(' ▶ ') : '   ';
-        const labelStr = padRight(`${f.label}:`, 18);
-        const valBox = `[ ${f.value} ]`;
-        const hintStr = f.hint ? ` ${f.hint}` : '';
-        const lineStr = `${pointer}${chalk.bold(labelStr)} ${valBox}${hintStr}`;
-
-        if (isCurrent) {
-          lines.push(chalk.bgCyan.black(padRight(lineStr, boxWidth - 6)));
-        } else {
-          lines.push(chalk.white(lineStr));
-        }
-      });
-
-      lines.push('');
-      if (this.isConnecting) {
-        lines.push(chalk.bgYellow.black(` ⏳ Testing connection & saving router... Please wait. `));
-      } else if (this.gatewayError) {
-        lines.push(chalk.bgRed.white(` ${this.gatewayError} `));
-      } else {
-        lines.push('');
-      }
-
-      lines.push(chalk.gray('─'.repeat(boxWidth - 4)));
-      lines.push(
-        chalk.gray(
-          `${chalk.cyan('[Tab/↑/↓]')} Move Field  ${chalk.green('[Enter]')} Save & Connect  ${chalk.yellow('[Esc]')} Cancel  ${chalk.magenta('[Ctrl+Q]')} Quit`
-        )
-      );
-    }
-
-    this.screen.drawBox(startRow, startCol, boxHeight, boxWidth, {
-      title: 'ROUTER ONBOARDING & LOGIN GATEWAY',
-      borderColor: chalk.cyan,
-      focused: true,
-      lines,
-    });
-
-    this.renderAttributionFooter(rows, cols);
-  }
-
-  private renderHeader(cols: number, host: string): void {
-    const title = ' MikroTik NetDevOps Suite v1.3.0 ';
-    const connBadge =
-      this.connectionStatus === 'connected'
-        ? chalk.bgGreen.black(' ONLINE ')
-        : this.connectionStatus === 'connecting'
-        ? chalk.bgYellow.black(' CONNECTING ')
-        : chalk.bgRed.white(' OFFLINE ');
-
-    const activeRouterName = chalk.bold.cyan(`[${this.targetName.toUpperCase()}]`);
-    const hardwareBadge = chalk.gray(`| HW: ${chalk.cyan(this.boardModel)} | OS: ${chalk.cyan(this.routerOsVersion)}`);
-    const targetBadge = chalk.gray(`| Target: ${activeRouterName} ${chalk.white(host)}`);
-
-    this.screen.moveTo(1, 1);
-    this.screen.drawBox(1, 1, 3, cols, {
-      borderColor: chalk.cyan,
-      lines: [`${chalk.bold.cyan(title)} ${targetBadge} ${hardwareBadge}  ${connBadge}`],
-    });
-  }
-
-  private renderNavigation(width: number, height: number): void {
-    const lines: string[] = [];
-    NAV_ITEMS.forEach((item, idx) => {
-      const isSelected = idx === this.selectedNavIndex;
-      const prefix = isSelected ? chalk.cyan.bold(' ▶ ') : '   ';
-      const label = `${item.icon} ${item.title}`;
-      if (isSelected) {
-        lines.push(chalk.bgCyan.black(` ${prefix}${padRight(label, width - 8)} `));
-      } else {
-        lines.push(chalk.white(`${prefix}${padRight(label, width - 8)}`));
-      }
-      lines.push('');
-    });
-
-    this.screen.drawBox(4, 1, height, width, {
-      title: 'NAVIGATION',
-      focused: this.focus === 'nav',
-      lines,
-    });
+    renderFooter(this.screen, rows, cols);
   }
 
   private renderMainContent(startCol: number, height: number, width: number): void {
@@ -1032,34 +716,37 @@ export class TuiDashboard {
     const activeItem = NAV_ITEMS[this.selectedNavIndex] || NAV_ITEMS[0]!;
 
     if (this.form) lines.push(...this.form.lines(Math.max(1, height - lines.length - 7), width - 4));
-    else switch (this.activeTab) {
-      case 'telemetry':
-        this.renderTelemetryContent(lines, width);
-        break;
-      case 'audit':
-        this.renderAuditContent(lines);
-        break;
-      case 'pcc':
-        this.renderPccContent(lines);
-        break;
-      case 'wireguard':
-        this.renderWireguardContent(lines);
-        break;
-      case 'hotspot':
-        this.renderHotspotContent(lines);
-        break;
-      case 'monitor':
-        this.renderMonitorContent(lines);
-        break;
-      case 'fleet':
-        this.renderFleetContent(lines);
-        break;
-      case 'linter':
-        this.renderLinterContent(lines);
-        break;
-      case 'profiles':
-        this.renderProfilesContent(lines);
-        break;
+    else {
+      const ctx = this.getTabContext();
+      switch (this.activeTab) {
+        case 'telemetry':
+          renderTelemetryContent(lines, width, ctx);
+          break;
+        case 'audit':
+          renderAuditContent(lines, ctx);
+          break;
+        case 'pcc':
+          renderPccContent(lines, ctx);
+          break;
+        case 'wireguard':
+          renderWireguardContent(lines, ctx);
+          break;
+        case 'hotspot':
+          renderHotspotContent(lines, ctx);
+          break;
+        case 'monitor':
+          renderMonitorContent(lines, ctx);
+          break;
+        case 'fleet':
+          renderFleetContent(lines, ctx);
+          break;
+        case 'linter':
+          renderLinterContent(lines, ctx);
+          break;
+        case 'profiles':
+          renderProfilesContent(lines);
+          break;
+      }
     }
 
     this.screen.drawBox(4, startCol, height, width, {
@@ -1067,241 +754,5 @@ export class TuiDashboard {
       focused: this.focus === 'content' || this.focus === 'wizard',
       lines,
     });
-  }
-
-  private renderTelemetryContent(lines: string[], width: number): void {
-    if (this.offline) { lines.push('Offline tools — no router connection is opened.', 'Choose PCC, WireGuard, Hotspot, or Config Linter.', 'Router telemetry is unavailable in offline mode.'); return; }
-    lines.push(chalk.cyan.bold('Hardware Architecture & Resource Utilization:'));
-    lines.push('');
-
-    const cpuGauge = renderGauge(this.cpuLoad, 20);
-    const cpuLine = `  CPU Utilization : [${chalk.yellow(cpuGauge)}] ${chalk.bold(`${this.cpuLoad}%`)}`;
-    lines.push(cpuLine);
-
-    const memPercent = this.totalMemory > 0 ? ((this.totalMemory - this.freeMemory) / this.totalMemory) * 100 : 0;
-    const memGauge = renderGauge(memPercent, 20);
-    const memLine = `  Memory Usage    : [${chalk.green(memGauge)}] ${formatBytes(this.totalMemory - this.freeMemory)} / ${formatBytes(this.totalMemory)} (${Math.round(memPercent)}%)`;
-    lines.push(memLine);
-
-    lines.push(`  Board Model     : ${chalk.bold.white(this.boardModel)}`);
-    lines.push(`  RouterOS Kernel : ${chalk.bold.white(this.routerOsVersion)}`);
-    lines.push(`  System Uptime   : ${chalk.bold.white(this.uptime)}`);
-    lines.push('');
-    lines.push(chalk.gray('─'.repeat(Math.max(10, width - 8))));
-    lines.push('');
-    lines.push('Interface topology is not inferred from a hardware example.');
-    lines.push(chalk.gray('Press [r] to poll router live telemetry, or [Tab] to navigate features.'));
-  }
-
-  private renderAuditContent(lines: string[]): void {
-    lines.push(chalk.cyan.bold('10-Pillar Certified Security Audit Engine:'));
-    lines.push(chalk.gray('Evaluates DNS resolvers, open service ports, IPv6 parity, bridge STP, and Mangle leaks.'));
-    lines.push('');
-
-    if (this.isAuditing) {
-      lines.push(chalk.yellow.bold('⏳ Auditing live router security posture... please wait...'));
-      return;
-    }
-
-    if (this.auditFindings.length === 0) {
-      lines.push(chalk.white('No active audit results loaded.'));
-      lines.push('');
-      lines.push(chalk.bgCyan.black(' Press [Space] or [Enter] to run 10-Pillar Audit against active router '));
-      return;
-    }
-
-    lines.push(chalk.bold(`Audit Complete — ${this.auditFindings.length} Security Checks Evaluated:`));
-    lines.push('');
-
-    this.auditFindings.slice(0, 10).forEach((f) => {
-      const badge =
-        f.status === 'CRITICAL'
-          ? chalk.bgRed.white.bold(' CRITICAL ')
-          : f.status === 'WARN'
-          ? chalk.bgYellow.black.bold(' WARN ')
-          : f.status === 'PASS' ? chalk.bgGreen.black.bold(' PASS ') : f.status === 'UNKNOWN' ? chalk.bgYellow.black.bold(' UNKNOWN ') : chalk.bgBlue.white.bold(' INFO ');
-
-      lines.push(`  ${badge} ${chalk.bold.white(f.id || 'CHECK')}: ${f.title}`);
-      lines.push(`     ${chalk.gray(truncate(f.detail, 70))}`);
-    });
-
-    lines.push('');
-    lines.push(chalk.gray('Press [Space] to re-run audit. Remediation scripts available in CLI `mtik audit`.'));
-  }
-
-  private renderPccContent(lines: string[]): void {
-    lines.push(chalk.cyan.bold('Multi-WAN PCC generator (offline)'));
-    lines.push('Enter WAN names, positive weights, gateways, and LAN interface.');
-    if (!this.wizardResult) lines.push('[Enter] Configure WANs and generate a local script');
-    else {
-      lines.push('Generated configuration — review before applying to a router.');
-      lines.push(...this.wizardResult.split('\n').slice(0, 9).map((line) => ConfigSanitizer.sanitizeText(line)));
-    }
-  }
-
-  private renderWireguardContent(lines: string[]): void {
-    lines.push(chalk.cyan.bold('WireGuard client provisioning (offline)'));
-    if (!this.wireguardResult) lines.push('[Enter] Configure client and server public key');
-    else {
-      lines.push('WireGuard Keys Provisioned');
-      lines.push(`Client public key: ${this.wireguardResult.clientPublicKey}`);
-      lines.push('Private and preshared keys: hidden; export provisioning files to use.');
-      lines.push(ConfigSanitizer.sanitizeText(this.wireguardResult.routerPeerCommand));
-    }
-  }
-
-  private renderHotspotContent(lines: string[]): void {
-    lines.push(chalk.cyan.bold('Hotspot portal generator (offline)'));
-    lines.push('[1] All-in-one  [2] Voucher  [3] Member  [4] Dual');
-    lines.push(`Selected: ${this.wizardData.authModel || 'all-in-one'}`);
-    lines.push('[Enter] Edit venue, model, portal DNS, authentication URL, and trial');
-    if (this.wizardResult) lines.push(...this.wizardResult.split('\n'));
-  }
-
-  private renderMonitorContent(lines: string[]): void {
-    lines.push(chalk.cyan.bold('Interface traffic monitor'));
-    lines.push('No traffic samples available in this TUI yet.');
-    lines.push('Live router monitoring is deferred; no example rates are displayed.');
-    if (!this.offline) lines.push('Use `mtik monitor` with a configured router for live samples.');
-  }
-
-  private renderFleetContent(lines: string[]): void {
-    if (this.wizardMode === 'add-router') {
-      this.renderAddRouterWizard(lines);
-      return;
-    }
-
-    lines.push(chalk.cyan.bold('Multi-Router Fleet Inventory (~/.mikrotik-skill/fleet.json):'));
-    lines.push(chalk.gray('Select any router and press [s] or [Enter] to immediately switch target without restart.'));
-    lines.push('');
-
-    const devices = this.fleetStore.devices;
-    lines.push('  #   Status     Router Name         Target Host:Port          User     Model');
-    lines.push('  ──────────────────────────────────────────────────────────────────────────────');
-
-    devices.forEach((d, idx) => {
-      const isSelected = idx === this.selectedFleetIndex;
-      const isActive = d.name === this.fleetStore.activeDevice;
-
-      const cursor = isSelected ? chalk.cyan.bold('▶ ') : '  ';
-      const statusBadge = isActive ? chalk.bgGreen.black.bold(' ACTIVE ') : chalk.gray(' IDLE   ');
-      const nameCol = padRight(d.name, 18);
-      const hostCol = padRight(`${d.host}:${d.port}`, 24);
-      const userCol = padRight(d.user, 8);
-      const modelCol = chalk.gray(d.model || 'MikroTik');
-
-      const rowText = `${cursor}${statusBadge}  ${chalk.white.bold(nameCol)}  ${chalk.cyan(hostCol)}  ${userCol} ${modelCol}`;
-      if (isSelected) {
-        lines.push(chalk.bgGray.black(rowText));
-      } else {
-        lines.push(rowText);
-      }
-    });
-
-    lines.push('');
-    lines.push(chalk.gray('──────────────────────────────────────────────────────────────────────────────'));
-    lines.push(`  ${chalk.green.bold('[s] / [Enter]')} Switch Active   ${chalk.cyan.bold('[a]')} Add Router   ${chalk.red.bold('[d]')} Delete Router   ${chalk.yellow.bold('[r]')} Refresh`);
-    lines.push('');
-    lines.push(chalk.gray('Quick CLI launch shortcut: run `mtik <router-name>` anytime in your shell!'));
-  }
-
-  private renderAddRouterWizard(lines: string[]): void {
-    lines.push(chalk.yellow.bold('★ Interactive Onboarding: Add Router to Fleet'));
-    lines.push(chalk.gray('Credentials will be securely encrypted with AES-256 in ~/.mikrotik-skill/fleet.json'));
-    lines.push('');
-
-    const fields: Array<{ key: keyof AddRouterForm; label: string; placeholder: string; isPassword?: boolean }> = [
-      { key: 'name', label: '1. Router Name Identifier', placeholder: 'e.g. noc-e60iugs, home-hex' },
-      { key: 'host', label: '2. Target IP Address / Domain', placeholder: 'e.g. 192.168.88.1' },
-      { key: 'preferBinary', label: '3. Transport', placeholder: 'Space toggles REST / Binary API' },
-      { key: 'port', label: '4. Router Port', placeholder: '443 (HTTPS) or 8729 (API TLS)' },
-      { key: 'user', label: '5. Username', placeholder: 'admin' },
-      { key: 'password', label: '6. Password', placeholder: '••••••••', isPassword: true },
-      { key: 'model', label: '7. Hardware Model', placeholder: 'e.g. E60iUGS (hEX S 2024)' },
-    ];
-
-    fields.forEach((f, idx) => {
-      const isFocused = idx === this.addRouterField;
-      const rawVal = f.key === 'preferBinary' ? (this.addRouterForm.preferBinary ? 'Binary API' : 'REST API') : String(this.addRouterForm[f.key] || '');
-      const displayVal = f.isPassword ? '•'.repeat(rawVal.length) : rawVal;
-
-      const cursor = isFocused ? chalk.cyan.bold(' ▶ ') : '   ';
-      const labelText = isFocused ? chalk.bold.white(f.label) : chalk.gray(f.label);
-      lines.push(`${cursor}${labelText}: ${displayVal || f.placeholder}${isFocused ? '█' : ''}`);
-
-    });
-
-    lines.push(chalk.gray('Press [Enter] for next field / save. [Up/Down] to navigate. [Esc] to cancel.'));
-  }
-
-  private renderLinterContent(lines: string[]): void {
-    lines.push(chalk.cyan.bold('Offline RouterOS configuration linter'));
-    lines.push('[Enter/o] Open .rsc file  [↑/↓] Findings  [e] Export report');
-    lines.push('Static checks do not replace a live router audit.');
-    if (!this.lintResult) { lines.push('No file reviewed. Choose a local configuration (maximum 128 KiB).'); return; }
-    const { summary, findings } = this.lintResult;
-    lines.push(`${summary.total} findings: ${summary.critical} critical, ${summary.high} high, ${summary.warn} warnings`);
-    if (!findings.length) { lines.push('No findings detected by the supported static checks.'); return; }
-    const finding = findings[this.lintIndex]!;
-    lines.push(`Finding ${this.lintIndex + 1}/${findings.length}: ${finding.id} [${finding.severity}]`);
-    lines.push(`Line ${finding.line}: ${finding.rule}`, finding.message, finding.rawLine, `Suggested action: ${finding.remediation}`);
-  }
-
-  private renderProfilesContent(lines: string[]): void {
-    lines.push(chalk.cyan.bold('Router Profiles & Model Context Protocol (MCP) Setup:'));
-    lines.push(chalk.gray('Manage multi-router credentials and register MCP server in local IDEs.'));
-    lines.push('');
-
-    const profiles = listProfiles();
-    lines.push(chalk.bold(`Saved Profiles (${profiles.length}):`));
-    profiles.forEach((p) => {
-      lines.push(`  • ${chalk.bold.white(p.name)} (${p.host})`);
-    });
-
-    lines.push('');
-    lines.push(chalk.bold('IDE MCP Integrations Supported:'));
-    lines.push(`  ${chalk.cyan('Cursor')}       : Add to .cursor/mcp.json -> command: npx -y mikrotik-skill mcp`);
-    lines.push(`  ${chalk.cyan('Claude Desktop')} : Add to claude_desktop_config.json`);
-    lines.push(`  ${chalk.cyan('Windsurf')}     : Add to ~/.codeium/windsurf/mcp_config.json`);
-    lines.push(`  ${chalk.cyan('VS Code')}      : Cline / Roo Code settings`);
-    lines.push('');
-    lines.push(chalk.gray('Auto-install MCP configuration into your IDEs via: `mtik install-mcp`'));
-  }
-
-  private renderFooter(rows: number, cols: number): void {
-    this.screen.moveTo(rows - 1, 1);
-    const navHelp = chalk.cyan('[↑/↓/1-9] Navigate');
-    const tabHelp = chalk.yellow('[Tab] Focus');
-    const actionHelp = chalk.green('[Enter] Action');
-    const switchHelp = chalk.magenta.bold('[l] Switch Router');
-    const refreshHelp = chalk.blue('[r] Refresh');
-    const quitHelp = chalk.red('[q] Quit');
-
-    const footerText = ` ${navHelp}  ${tabHelp}  ${actionHelp}  ${switchHelp}  ${refreshHelp}  ${quitHelp} `;
-    const paddedFooter = padRight(footerText, cols);
-    this.screen.write(chalk.bgGray.black(paddedFooter));
-
-    this.renderAttributionFooter(rows, cols);
-  }
-
-  private renderAttributionFooter(rows: number, cols: number): void {
-    this.screen.moveTo(rows, 1);
-    const brand = chalk.gray(' MikroTik NetDevOps Suite v1.3.0');
-    const authorLink = terminalLink('Ardian Ryan', 'https://github.com/ardianryan');
-    const authorFull = `${chalk.gray('Engineered by ')}${chalk.cyan.bold(authorLink)}${chalk.gray(' (https://github.com/ardianryan) ')}`;
-    const authorCompact = `${chalk.gray('Engineered by ')}${chalk.cyan.bold(authorLink)} `;
-
-    const authorText = cols >= 88 ? authorFull : authorCompact;
-    const authorLen = stringWidth(authorText);
-    const brandLen = stringWidth(brand);
-
-    if (cols >= 68) {
-      const spaceLen = Math.max(1, cols - brandLen - authorLen);
-      const fullLine = `${brand}${' '.repeat(spaceLen)}${authorText}`;
-      this.screen.write(fullLine);
-    } else {
-      const compactLine = center(authorCompact, cols);
-      this.screen.write(compactLine);
-    }
   }
 }
