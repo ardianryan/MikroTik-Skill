@@ -1,7 +1,36 @@
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import { RouterOSAPI } from 'node-routeros';
+import { Channel } from 'node-routeros/dist/Channel.js';
+import { Receiver } from 'node-routeros/dist/connector/Receiver.js';
 import type { RouterConfig } from '../config/profile.js';
+
+// Patch node-routeros Channel to gracefully treat RouterOS v7 '!empty' replies as empty result sets
+const proto = Channel.prototype as unknown as Record<string, unknown>;
+if (typeof proto.onUnknown === 'function') {
+  const originalOnUnknown = proto.onUnknown as (this: { emit: (event: string, data?: unknown) => void; close: () => void }, reply: string) => void;
+  proto.onUnknown = function (this: { emit: (event: string, data?: unknown) => void; close: () => void }, reply: string) {
+    if (reply === '!empty') {
+      this.emit('done', []);
+      this.close();
+      return;
+    }
+    return originalOnUnknown.call(this, reply);
+  };
+}
+
+// Patch node-routeros Receiver to gracefully ignore late trailing packets on already-closed tags
+const receiverProto = Receiver.prototype as unknown as Record<string, unknown>;
+if (typeof receiverProto.sendTagData === 'function') {
+  const origSendTagData = receiverProto.sendTagData as (this: { tags: Map<unknown, { callback: (p: unknown) => void }>; cleanUp: () => void }, currentTag: unknown) => void;
+  receiverProto.sendTagData = function (this: { tags: Map<unknown, { callback: (p: unknown) => void }>; cleanUp: () => void }, currentTag: unknown) {
+    if (!this.tags.has(currentTag)) {
+      this.cleanUp();
+      return;
+    }
+    return origSendTagData.call(this, currentTag);
+  };
+}
 import type {
   SystemResource,
   RouterBoard,
@@ -17,6 +46,7 @@ import type {
   ContainerItem,
   AdlistItem,
   InterfaceTrafficMonitor,
+  WebServerSettings,
 } from './types.js';
 
 export class RouterOsBinaryClient {
@@ -24,6 +54,7 @@ export class RouterOsBinaryClient {
   private api: RouterOSAPI | null = null;
   private isConnected = false;
   private connectingPromise: Promise<void> | null = null;
+  private queue: Promise<unknown> = Promise.resolve();
 
   constructor(config: RouterConfig) {
     this.config = config;
@@ -48,6 +79,13 @@ export class RouterOsBinaryClient {
         timeout: 10,
       });
 
+      // Suppress unhandled event crashes for benign RouterOS v7 words (e.g. !empty)
+      api.on('error', (err: Error & { reply?: string; errno?: string }) => {
+        if (err.message?.includes('!empty') || err.reply === '!empty' || err.errno === 'UNKNOWNREPLY') {
+          return;
+        }
+      });
+
       try {
         await api.connect();
         this.api = api;
@@ -70,20 +108,35 @@ export class RouterOsBinaryClient {
   }
 
   private async writeQuery<T>(command: string, params?: Record<string, string>): Promise<T[]> {
-    await this.connect();
-    if (!this.api) {
-      throw new Error('RouterOS binary API is not connected');
-    }
+    return new Promise<T[]>((resolve, reject) => {
+      this.queue = this.queue.then(async () => {
+        try {
+          await this.connect();
+          if (!this.api) {
+            throw new Error('RouterOS binary API is not connected');
+          }
 
-    const commandParts: string[] = [command];
-    if (params) {
-      for (const [key, value] of Object.entries(params)) {
-        commandParts.push(`?${key}=${value}`);
-      }
-    }
+          const commandParts: string[] = [command];
+          if (params) {
+            for (const [key, value] of Object.entries(params)) {
+              commandParts.push(`?${key}=${value}`);
+            }
+          }
 
-    const result = await this.api.write(commandParts);
-    return result as T[];
+          const result = await this.api.write(commandParts);
+          resolve(result as T[]);
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg.includes('!empty') || msg.includes('UNKNOWNREPLY')) {
+            resolve([]);
+          } else {
+            reject(err);
+          }
+        }
+      }).catch((err) => {
+        reject(err);
+      });
+    });
   }
 
   async getResource(): Promise<SystemResource> {
@@ -250,6 +303,15 @@ export class RouterOsBinaryClient {
 
   async getIpv6Filters(): Promise<FirewallFilterRule[]> {
     return this.writeQuery<FirewallFilterRule>('/ipv6/firewall/filter/print');
+  }
+
+  async getWebServerSettings(): Promise<WebServerSettings | null> {
+    try {
+      const res = await this.writeQuery<WebServerSettings>('/ip/service/webserver/print');
+      return res[0] || null;
+    } catch {
+      return null;
+    }
   }
 
   async executeScript(script: string): Promise<unknown> {

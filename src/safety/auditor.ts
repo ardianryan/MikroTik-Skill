@@ -35,22 +35,79 @@ export class SecurityAuditor {
     // Pillar 1: DNS Open Resolver Check
     const allowRemote = dns['allow-remote-requests'] === true || dns['allow-remote-requests'] === 'true' || dns['allow-remote-requests'] === 'yes';
     if (allowRemote) {
-      const dropsWanDns = filters.some(
-        (f) =>
-          f.chain === 'input' &&
-          f.action === 'drop' &&
-          (f.protocol === 'udp' || !f.protocol) &&
-          f['dst-port'] === '53' &&
-          !enabled(f.disabled) && f['in-interface-list'] === 'WAN' && !f['src-address'] && !f['src-address-list'] &&
-          !filters.slice(0, filters.findIndex((entry) => entry === f)).some((earlier) => !enabled(earlier.disabled) && earlier.chain === 'input' && ['accept', 'jump', 'return'].includes(earlier.action))
-      );
+      const isWanTarget = (iface?: string, ifaceList?: string) => {
+        if (!iface && !ifaceList) return false;
+        if (ifaceList) {
+          const listLower = ifaceList.toLowerCase();
+          if (listLower === 'wan' || listLower === '!lan' || listLower.includes('internet')) return true;
+        }
+        if (iface) {
+          const ifaceLower = iface.toLowerCase();
+          if (
+            ifaceLower.includes('wan') ||
+            ifaceLower.includes('isp') ||
+            ifaceLower.includes('myrep') ||
+            ifaceLower.includes('biznet') ||
+            ifaceLower.startsWith('ether1') ||
+            ifaceLower.startsWith('pppoe') ||
+            ifaceLower.startsWith('sfp')
+          ) {
+            return true;
+          }
+        }
+        return false;
+      };
+
+      const dropsWanDns = filters.some((f) => {
+        if (f.chain !== 'input' || enabled(f.disabled)) return false;
+        if (f.action !== 'drop') return false;
+
+        const isDnsPort = f['dst-port'] === '53' || f['dst-port']?.includes('53');
+        const isUdp = f.protocol === 'udp' || !f.protocol;
+        const targetsWan = isWanTarget(f['in-interface'], f['in-interface-list']);
+        const isGeneralWanDrop = targetsWan && !f['dst-port'] && !f.protocol;
+
+        if ((isDnsPort && isUdp && targetsWan) || isGeneralWanDrop) {
+          const earlierRules = filters.slice(0, filters.findIndex((entry) => entry === f));
+          const hasUnsafeEarlierAccept = earlierRules.some((earlier) => {
+            if (enabled(earlier.disabled) || earlier.chain !== 'input') return false;
+            if (!['accept', 'jump', 'return'].includes(earlier.action)) return false;
+            if (earlier['connection-state'] && !earlier['connection-state'].includes('new') && !earlier['connection-state'].includes('invalid')) {
+              return false;
+            }
+            if (earlier['dst-port'] && earlier['dst-port'] !== '53' && !earlier['dst-port'].includes('53')) {
+              return false;
+            }
+            if (earlier['in-interface-list'] === 'LAN' || earlier['in-interface-list'] === 'MGMT') {
+              return false;
+            }
+            if (
+              earlier['src-address'] &&
+              (earlier['src-address'].startsWith('10.') ||
+                earlier['src-address'].startsWith('192.168.') ||
+                earlier['src-address'].startsWith('172.16.') ||
+                earlier['src-address'].startsWith('172.17.') ||
+                earlier['src-address'].startsWith('172.18.') ||
+                earlier['src-address'].startsWith('172.19.') ||
+                earlier['src-address'].startsWith('172.2') ||
+                earlier['src-address'].startsWith('172.3') ||
+                earlier['src-address'].startsWith('127.'))
+            ) {
+              return false;
+            }
+            return true;
+          });
+          return !hasUnsafeEarlierAccept;
+        }
+        return false;
+      });
 
       if (dropsWanDns) {
         items.push({
           pillar: 'Pillar 1: DNS Protection',
           title: 'DNS Open Resolver',
           status: 'PASS',
-          detail: 'Remote DNS queries are allowed, but WAN UDP/53 is explicitly blocked in firewall filters.',
+          detail: 'Remote DNS queries are allowed, but incoming WAN DNS queries are explicitly blocked in firewall filters.',
         });
       } else {
         items.push({
@@ -74,15 +131,16 @@ export class SecurityAuditor {
     // Pillar 2: Sensitive Services Exposure
     const sensitiveServices = ['winbox', 'api', 'api-ssl', 'ssh', 'www', 'www-ssl'];
     for (const sName of sensitiveServices) {
-      const srv = services.find((s) => s.name === sName);
-      if (srv && srv.disabled !== true && srv.disabled !== 'true') {
-        const hasAddressRestriction = Boolean(srv.address && srv.address.trim() !== '' && srv.address !== '0.0.0.0/0');
+      const srv = services.find((s) => s.name === sName && !enabled(s.dynamic));
+      if (srv && !enabled(srv.disabled)) {
+        const addr = (srv['available-from'] || srv.address || '').trim();
+        const hasAddressRestriction = Boolean(addr !== '' && addr !== '0.0.0.0/0');
         if (hasAddressRestriction) {
           items.push({
             pillar: 'Pillar 2: Service Hardening',
             title: `Service [${sName}] Access`,
             status: 'PASS',
-            detail: `Service '${sName}' (port ${srv.port}) is restricted to IP subnet: ${srv.address}`,
+            detail: `Service '${sName}' (port ${srv.port}) is restricted to IP subnet: ${addr}`,
           });
         } else {
           items.push({
@@ -132,14 +190,25 @@ export class SecurityAuditor {
         detail: 'Mangle rule for DST-NAT bypass is correctly placed at index 0 in prerouting chain.',
       });
     } else if (dstnatMangleIndex > 0) {
-      items.push({
-        pillar: 'Pillar 3: Mangle Hierarchy',
-        title: 'Hairpin NAT Mangle Position',
-        status: 'WARN',
-        detail: `DST-NAT bypass mangle rule is at index ${dstnatMangleIndex} instead of 0. Forwarded port traffic might be misrouted by earlier rules.`,
-        recommendation: 'Move DST-NAT accept mangle rule to index 0.',
-        remediationCommand: `/ip firewall mangle move ${dstnatMangleIndex} destination=0`,
-      });
+      const earlierPrerouting = mangle.slice(0, dstnatMangleIndex).filter((m) => m.chain === 'prerouting');
+      const allEarlierAreAccept = earlierPrerouting.every((m) => m.action === 'accept');
+      if (allEarlierAreAccept) {
+        items.push({
+          pillar: 'Pillar 3: Mangle Hierarchy',
+          title: 'Hairpin NAT Mangle Bypass',
+          status: 'PASS',
+          detail: `DST-NAT bypass rule is placed safely within Tier 0 bypass group at prerouting index ${dstnatMangleIndex} (preceded solely by local accept bypass rules).`,
+        });
+      } else {
+        items.push({
+          pillar: 'Pillar 3: Mangle Hierarchy',
+          title: 'Hairpin NAT Mangle Position',
+          status: 'WARN',
+          detail: `DST-NAT bypass mangle rule is at index ${dstnatMangleIndex} preceded by non-accept rules. Forwarded port traffic might be misrouted.`,
+          recommendation: 'Move DST-NAT accept mangle rule to index 0 or place before any mark-routing rules.',
+          remediationCommand: `/ip firewall mangle move ${dstnatMangleIndex} destination=0`,
+        });
+      }
     } else {
       items.push({
         pillar: 'Pillar 3: Mangle Hierarchy',
@@ -171,7 +240,7 @@ export class SecurityAuditor {
           remediationCommand: `/routing table add name="${mark}" fib`,
         });
       } else {
-        const isFib = table.fib === true || table.fib === 'true' || table.fib === 'yes';
+        const isFib = table.fib === true || table.fib === 'true' || table.fib === 'yes' || table.fib === '';
         if (!isFib) {
           items.push({
             pillar: 'Pillar 4: Routing FIB Integrity',

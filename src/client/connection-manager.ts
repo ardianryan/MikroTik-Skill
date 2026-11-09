@@ -477,7 +477,10 @@ export class ConnectionManager {
   }
 
   async getWebServerSettings(): Promise<WebServerSettings | null> {
-    return this.restClient.getWebServerSettings();
+    return this.executeWithFallback(
+      (c) => c.getWebServerSettings(),
+      (c) => c.getWebServerSettings()
+    ).catch(() => null);
   }
 
   async restRequest<T>(endpoint: string, method: string = 'GET', body?: unknown): Promise<T> {

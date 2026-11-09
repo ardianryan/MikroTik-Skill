@@ -93,6 +93,8 @@ export interface IpService {
   port: number | string;
   disabled?: boolean | string;
   address?: string;
+  'available-from'?: string;
+  dynamic?: boolean | string;
 }
 
 export interface NtpClient {

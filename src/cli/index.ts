@@ -47,10 +47,15 @@ program
   .name('mtik')
   .description('MikroTik RouterOS v7 Production Automation & Management CLI')
   .version('1.3.0')
+  .option('-d, --device <name>', 'Target specific router from fleet inventory or profile')
   .option('--apply', 'Apply after interactive review', false)
   .option('--reason <text>', 'Reason for a manual mutation')
   .option('--findings <ids>', 'Comma-separated audit finding IDs')
   .option('--rollback <script>', 'Explicit RouterOS rollback script');
+
+function activeConfig(): ReturnType<typeof getDeviceConfig> {
+  return getDeviceConfig(commandOptions.device as string | undefined);
+}
 
 function cliMutationOptions(config: ReturnType<typeof getDeviceConfig>, device?: string): MutationOptions {
   const options = commandOptions;
@@ -80,11 +85,11 @@ program
   .command('login')
   .description('Verify credentials and test connection to the active router.')
   .action(async () => {
-    const config = getDeviceConfig();
+    const config = activeConfig();
     const safeCfg = sanitizeConfig(config);
     console.log(chalk.blue(`Authenticating to: ${safeCfg.host} (User: ${safeCfg.user})...`));
 
-    const conn = new ConnectionManager(config, cliMutationOptions(config));
+    const conn = new ConnectionManager(config, cliMutationOptions(config, commandOptions.device as string | undefined));
     try {
       const result = await conn.testConnection();
       if (result.successful) {
@@ -107,11 +112,11 @@ program
   .command('test')
   .description('Test connectivity and transport detection (REST API vs Native API Port 8728).')
   .action(async () => {
-    const config = getDeviceConfig();
+    const config = activeConfig();
     const safeCfg = sanitizeConfig(config);
     console.log(chalk.blue(`Target: ${safeCfg.host} (User: ${safeCfg.user})`));
 
-    const conn = new ConnectionManager(config, cliMutationOptions(config));
+    const conn = new ConnectionManager(config, cliMutationOptions(config, commandOptions.device as string | undefined));
     try {
       const result = await conn.testConnection();
       if (result.successful) {
@@ -134,8 +139,8 @@ program
   .command('status')
   .description('Show router health, resource utilization, and interface overview.')
   .action(async () => {
-    const config = getDeviceConfig();
-    const conn = new ConnectionManager(config, cliMutationOptions(config));
+    const config = activeConfig();
+    const conn = new ConnectionManager(config, cliMutationOptions(config, commandOptions.device as string | undefined));
     try {
       const [resource, ifaces, leases] = await Promise.all([
         conn.getResource(),
@@ -165,8 +170,8 @@ program
   .option('-f, --format <type>', 'Report format: text or markdown', 'text')
   .option('-o, --output <file>', 'Save audit report to file')
   .action(async (options: { format?: string; output?: string }) => {
-    const config = getDeviceConfig();
-    const conn = new ConnectionManager(config, cliMutationOptions(config));
+    const config = activeConfig();
+    const conn = new ConnectionManager(config, cliMutationOptions(config, commandOptions.device as string | undefined));
     const auditor = new SecurityAuditor(conn);
 
     try {
@@ -211,6 +216,105 @@ program
       }
     } catch (err) {
       console.error(chalk.red(`Audit execution failed: ${ConfigSanitizer.sanitizeText(err instanceof Error ? err.message : String(err))}`));
+      process.exitCode = 1;
+    } finally {
+      await conn.close();
+    }
+  });
+
+program
+  .command('use <name>')
+  .description('Switch active router target in fleet store (~/.mikrotik-skill/fleet.json).')
+  .action((name: string) => {
+    const success = setActiveFleetDevice(name) || setActiveProfile(name);
+    if (success) {
+      console.log(chalk.green(`✓ Switched active router target to '${name}'.`));
+    } else {
+      console.error(chalk.red(`Error: Router '${name}' not found in fleet store.`));
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('fix [findingId]')
+  .description('Interactively review and apply remediation for a specific audit finding (e.g. F-14).')
+  .option('--dry-run', 'Preview changes without executing', false)
+  .action(async (findingId?: string, options?: { dryRun?: boolean }) => {
+    const config = activeConfig();
+    const conn = new ConnectionManager(config, cliMutationOptions(config, commandOptions.device as string | undefined));
+    const auditor = new SecurityAuditor(conn);
+
+    try {
+      console.log(chalk.blue('Running security audit to discover remediations...'));
+      const report = await auditor.runFullAudit();
+
+      if (!findingId) {
+        const actionable = report.items.filter((i) => i.remediationCommand && (i.status === 'CRITICAL' || i.status === 'WARN'));
+        if (actionable.length === 0) {
+          console.log(chalk.green('✓ All audited pillars are compliant! No remediation needed.'));
+          return;
+        }
+        console.log(chalk.bold(`\nActionable Findings (${actionable.length} available):`));
+        for (const item of actionable) {
+          const badge = item.status === 'CRITICAL' ? chalk.red('[CRIT]') : chalk.yellow('[WARN]');
+          console.log(`  ${chalk.cyan(item.id || '-')} ${badge} ${chalk.bold(item.title)}: ${item.detail}`);
+          console.log(`       ${chalk.gray('Remediation: ' + item.remediationCommand)}\n`);
+        }
+        console.log(chalk.gray('To fix a specific finding, run: mtik fix <ID> (e.g. mtik fix F-14)'));
+        return;
+      }
+
+      const item = report.items.find((i) => i.id?.toLowerCase() === findingId.toLowerCase());
+      if (!item) {
+        console.error(chalk.red(`Finding ID '${findingId}' not found in audit report.`));
+        process.exitCode = 1;
+        return;
+      }
+
+      if (!item.remediationCommand) {
+        console.log(chalk.yellow(`Finding [${item.id}] "${item.title}" does not have an automated remediation command.`));
+        return;
+      }
+
+      console.log(chalk.cyan.bold(`\nTarget Finding: [${item.id}] ${item.title} (${item.status})`));
+      console.log(`Detail: ${item.detail}`);
+      console.log(`Proposed Command: ${chalk.green(item.remediationCommand)}\n`);
+
+      const diff: DiffEntry[] = [
+        {
+          type: 'MODIFY',
+          target: `/remediation/${item.id}`,
+          details: { command: item.remediationCommand },
+          previous: { status: item.status, detail: item.detail },
+        },
+      ];
+      console.log(formatBatchDiff(diff));
+
+      if (options?.dryRun) {
+        console.log(chalk.yellow('Dry-run mode: mutation simulated safely. No changes applied.'));
+        return;
+      }
+
+      if (!process.stdin.isTTY) {
+        console.error(chalk.red('Interactive TTY required to confirm remediation.'));
+        process.exitCode = 1;
+        return;
+      }
+
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
+      const answer = (await rl.question(chalk.yellow.bold('Apply this remediation with 30s safe-mode watchdog? Type APPLY: '))).trim();
+      rl.close();
+
+      if (answer !== 'APPLY') {
+        console.log(chalk.gray('Remediation aborted by user.'));
+        return;
+      }
+
+      console.log(chalk.blue('Arming 30-second watchdog and applying remediation...'));
+      await conn.executeScript(item.remediationCommand);
+      console.log(chalk.green(`✓ Successfully applied remediation for [${item.id}]!`));
+    } catch (err) {
+      console.error(chalk.red(`Remediation failed: ${ConfigSanitizer.sanitizeText(err instanceof Error ? err.message : String(err))}`));
       process.exitCode = 1;
     } finally {
       await conn.close();
